@@ -243,354 +243,308 @@
         }
 
         // --- Sensor Event Listeners ---
-        let calibrationSamples = [];
-        let calibrationFrames = 0;
+                let calibrationSamples = [];
+                let calibrationFrames = 0;
+                let hasAbsolute = false;
 
-        function onOrientation(e) {
-            orientationEventCount++;
-            lastOrientationEventTime = Date.now();
+                function processOrientation(e, isAbsolute) {
+                    orientationEventCount++;
+                    lastOrientationEventTime = Date.now();
 
-            // Some devices briefly report null gamma/beta right after permission is granted,
-            // before the sensor warms up. Treating null as 0 snaps tilt to dead-center;
-            // instead, just skip that frame and wait for a real reading.
-            if (e.gamma == null || e.beta == null) {
-                debugPanel.textContent =
-                    `orientation events: ${orientationEventCount} (absolute: ${usingAbsoluteGlobal})\n` +
-                    `gamma: null  beta: null  alpha: ${e.alpha}\n` +
-                    `>> SKIPPING this frame (null gamma/beta)\n` +
-                    `motion events: ${motionEventCount}`;
-                return;
-            }
+                    if (e.gamma == null || e.beta == null) {
+                        return;
+                    }
 
-            let gamma = e.gamma * (Math.PI / 180); // Roll
-            let beta = e.beta * (Math.PI / 180);   // Pitch
-            let alpha = (e.alpha || 0) * (Math.PI / 180); // Compass
+                    let gamma = e.gamma * (Math.PI / 180); // Roll
+                    let beta = e.beta * (Math.PI / 180);   // Pitch
+                    let alpha = (e.alpha || 0) * (Math.PI / 180); // Compass
 
-            debugPanel.textContent =
-                `orientation events: ${orientationEventCount} (absolute: ${usingAbsoluteGlobal})\n` +
-                `gamma: ${e.gamma.toFixed(1)}  beta: ${e.beta.toFixed(1)}  alpha: ${(e.alpha || 0).toFixed(1)}\n` +
-                `calibrated: ${calibrated}  targetTilt: ${targetTilt.toFixed(2)}  targetPitch: ${targetPitch.toFixed(2)}\n` +
-                `motion events: ${motionEventCount}`;
+                    if (!calibrated) {
+                        calibrationSamples.push(beta);
+                        calibrationFrames++;
+                        if (calibrationFrames >= 10) {
+                            betaZero = calibrationSamples.reduce((a, b) => a + b, 0) / calibrationSamples.length;
+                            calibrated = true;
+                            calibratingText.style.display = 'none';
+                            permissionUI.style.display = 'none';
+                        }
+                        return;
+                    }
 
-            // During the brief calibration window, capture resting beta as the zero-point
-            // instead of relying on the old hardcoded 0.78 constant
-            if (!calibrated) {
-                calibrationSamples.push(beta);
-                calibrationFrames++;
-                if (calibrationFrames >= 15) {
-                    betaZero = calibrationSamples.reduce((a, b) => a + b, 0) / calibrationSamples.length;
-                    calibrated = true;
-                    calibratingText.style.display = 'none';
-                    permissionUI.style.display = 'none';
-                }
-                return;
-            }
+                    // Device horizon angle relative to ground gravity
+                    targetTilt = -Math.sin(gamma);
+                    targetPitch = Math.max(-0.5, Math.min(0.5, (beta - betaZero) * 0.5));
 
-            // Device horizon angle relative to ground gravity
-            targetTilt = -Math.sin(gamma);
-            targetPitch = Math.max(-0.5, Math.min(0.5, (beta - betaZero) * 0.5));
+                    // Accurate Compass Heading
+                    if (e.webkitCompassHeading !== undefined) {
+                        targetHeading = (e.webkitCompassHeading * Math.PI) / 180;
+                    } else {
+                        // If using absolute orientation, alpha is relative to Earth's coordinate frame
+                        targetHeading = (360 * Math.PI / 180) - alpha;
+                    }
 
-            // Accurate Compass Heading (iOS support included)
-            if (e.webkitCompassHeading !== undefined) {
-                targetHeading = (e.webkitCompassHeading * Math.PI) / 180;
-            } else {
-                targetHeading = (2 * Math.PI) - alpha;
-            }
-        }
-
-        function onMotion(e) {
-            motionEventCount++;
-            lastMotionEventTime = Date.now();
-            let acc = e.acceleration;
-            // Some devices provide null for acceleration but populate accelerationIncludingGravity
-            if (!acc || acc.x == null) {
-                acc = e.accelerationIncludingGravity;
-            }
-            if (!acc || acc.x == null) return;
-
-            // Compute sudden jerk/acceleration delta
-            const dx = acc.x - lastShake.x;
-            const dy = acc.y - lastShake.y;
-            const dz = acc.z - lastShake.z;
-
-            lastShake = { x: acc.x, y: acc.y, z: acc.z };
-
-            const jerk = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-            // Push into rolling buffer and use the buffer's average to judge a real shake,
-            // filtering out single-frame sensor noise
-            shakeBuffer[shakeBufferIdx] = jerk;
-            shakeBufferIdx = (shakeBufferIdx + 1) % SHAKE_BUFFER_SIZE;
-            const avgJerk = shakeBuffer.reduce((a, b) => a + b, 0) / SHAKE_BUFFER_SIZE;
-
-            // If a sustained shake or jerk is detected, inject physical impulse into liquid
-            if (avgJerk > 2.4) {
-                const splashForce = Math.min(avgJerk * 2.0, 55);
-
-                // Direction of shake determines slosh side
-                if (dx > 0) {
-                    nodes[0].velocity += splashForce * 0.8;
-                    nodes[nodes.length - 1].velocity -= splashForce * 0.8;
-                } else {
-                    nodes[0].velocity -= splashForce * 0.8;
-                    nodes[nodes.length - 1].velocity += splashForce * 0.8;
+                    debugPanel.textContent =
+                        `Compass: ${Math.round(targetHeading * 180 / Math.PI)}° | Tilt: ${Math.round(e.gamma)}° | Pitch: ${Math.round(e.beta)}°\n` +
+                        `Events: ${orientationEventCount} | Abs: ${isAbsolute}\n` +
+                        `Motion Events: ${motionEventCount}`;
                 }
 
-                // Random chop in the middle
-                nodes[Math.floor(NODE_COUNT / 2)].velocity += (Math.random() - 0.5) * splashForce;
+                function onOrientationAbsolute(e) {
+                    hasAbsolute = true;
+                    processOrientation(e, true);
+                }
 
-                // Vertical jolt (dz) rocks the whole surface up/down slightly for extra realism
-                if (Math.abs(dz) > 1.5) {
-                    for (let i = 0; i < NODE_COUNT; i++) {
-                        nodes[i].velocity += (dz > 0 ? 1 : -1) * Math.min(Math.abs(dz) * 0.6, 8);
+                function onOrientation(e) {
+                    if (hasAbsolute) return; // Ignore relative orientation if absolute is working
+                    processOrientation(e, false);
+                }
+
+                function onMotion(e) {
+                    motionEventCount++;
+                    lastMotionEventTime = Date.now();
+                    let acc = e.acceleration || e.accelerationIncludingGravity;
+                    if (!acc || acc.x == null) return;
+
+                    const dx = acc.x - lastShake.x;
+                    const dy = acc.y - lastShake.y;
+                    const dz = acc.z - lastShake.z;
+
+                    lastShake = { x: acc.x, y: acc.y, z: acc.z };
+
+                    const jerk = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+                    shakeBuffer[shakeBufferIdx] = jerk;
+                    shakeBufferIdx = (shakeBufferIdx + 1) % SHAKE_BUFFER_SIZE;
+                    const avgJerk = shakeBuffer.reduce((a, b) => a + b, 0) / SHAKE_BUFFER_SIZE;
+
+                    if (avgJerk > 2.4) {
+                        const splashForce = Math.min(avgJerk * 2.0, 55);
+
+                        if (dx > 0) {
+                            nodes[0].velocity += splashForce * 0.8;
+                            nodes[nodes.length - 1].velocity -= splashForce * 0.8;
+                        } else {
+                            nodes[0].velocity -= splashForce * 0.8;
+                            nodes[nodes.length - 1].velocity += splashForce * 0.8;
+                        }
+
+                        nodes[Math.floor(NODE_COUNT / 2)].velocity += (Math.random() - 0.5) * splashForce;
+
+                        if (Math.abs(dz) > 1.5) {
+                            for (let i = 0; i < NODE_COUNT; i++) {
+                                nodes[i].velocity += (dz > 0 ? 1 : -1) * Math.min(Math.abs(dz) * 0.6, 8);
+                            }
+                        }
                     }
                 }
-            }
-        }
 
-        // --- Animation & Physics Loop ---
-        let clock = 0;
+                // --- Animation & Physics Loop ---
+                let clock = 0;
 
-        function updatePhysics() {
-            clock += 0.04;
+                function updatePhysics() {
+                    clock += 0.04;
 
-            // Variable-speed interpolation: bigger sudden changes in tilt/pitch move faster,
-            // so a quick device flip feels responsive instead of sluggishly damped
-            const tiltDelta = Math.abs(targetTilt - currentTilt);
-            const tiltSpeed = Math.min(0.08 + tiltDelta * 0.25, 0.35);
-            currentTilt += (targetTilt - currentTilt) * tiltSpeed;
+                    const tiltDelta = Math.abs(targetTilt - currentTilt);
+                    const tiltSpeed = Math.min(0.08 + tiltDelta * 0.25, 0.35);
+                    currentTilt += (targetTilt - currentTilt) * tiltSpeed;
 
-            const pitchDelta = Math.abs(targetPitch - currentPitch);
-            const pitchSpeed = Math.min(0.08 + pitchDelta * 0.25, 0.35);
-            currentPitch += (targetPitch - currentPitch) * pitchSpeed;
+                    const pitchDelta = Math.abs(targetPitch - currentPitch);
+                    const pitchSpeed = Math.min(0.08 + pitchDelta * 0.25, 0.35);
+                    currentPitch += (targetPitch - currentPitch) * pitchSpeed;
 
-            currentHeading = lerpAngle(currentHeading, targetHeading, 0.07);
+                    currentHeading = lerpAngle(currentHeading, targetHeading, 0.07);
 
-            // Water surface baseline tilt
-            const baselineCenter = (WIDGET_SIZE * 0.52) + (currentPitch * 40);
-            const maxTiltDrop = (WIDGET_SIZE * 0.45) * currentTilt;
+                    const baselineCenter = (WIDGET_SIZE * 0.52) + (currentPitch * 40);
+                    const maxTiltDrop = (WIDGET_SIZE * 0.45) * currentTilt;
 
-            for (let i = 0; i < NODE_COUNT; i++) {
-                const ratio = (i / (NODE_COUNT - 1)) - 0.5; // -0.5 to 0.5
-                nodes[i].targetY = baselineCenter + (ratio * maxTiltDrop * 2);
+                    for (let i = 0; i < NODE_COUNT; i++) {
+                        const ratio = (i / (NODE_COUNT - 1)) - 0.5;
+                        nodes[i].targetY = baselineCenter + (ratio * maxTiltDrop * 2);
 
-                // Spring-damper physics
-                const diff = nodes[i].y - nodes[i].targetY;
-                const force = -SPRING_K * diff - DAMPING * nodes[i].velocity;
-                nodes[i].velocity += force;
-                nodes[i].y += nodes[i].velocity;
+                        const diff = nodes[i].y - nodes[i].targetY;
+                        const force = -SPRING_K * diff - DAMPING * nodes[i].velocity;
+                        nodes[i].velocity += force;
+                        nodes[i].y += nodes[i].velocity;
 
-                // Foam builds up when local velocity exceeds threshold, decays otherwise
-                if (Math.abs(nodes[i].velocity) > FOAM_VELOCITY_THRESHOLD) {
-                    nodes[i].foam = Math.min(1, nodes[i].foam + (Math.abs(nodes[i].velocity) - FOAM_VELOCITY_THRESHOLD) * 0.15);
-                } else {
-                    nodes[i].foam *= FOAM_DECAY;
+                        if (Math.abs(nodes[i].velocity) > FOAM_VELOCITY_THRESHOLD) {
+                            nodes[i].foam = Math.min(1, nodes[i].foam + (Math.abs(nodes[i].velocity) - FOAM_VELOCITY_THRESHOLD) * 0.15);
+                        } else {
+                            nodes[i].foam *= FOAM_DECAY;
+                        }
+                    }
+
+                    const leftPass = [];
+                    const rightPass = [];
+
+                    for (let i = 0; i < NODE_COUNT; i++) {
+                        if (i > 0) {
+                            leftPass[i] = SPREAD * (nodes[i].y - nodes[i - 1].y);
+                            nodes[i - 1].velocity += leftPass[i];
+                        }
+                        if (i < NODE_COUNT - 1) {
+                            rightPass[i] = SPREAD * (nodes[i].y - nodes[i + 1].y);
+                            nodes[i + 1].velocity += rightPass[i];
+                        }
+                    }
+
+                    const centerIdx = Math.floor(NODE_COUNT / 2);
+                    const waterHeightAtShip = nodes[centerIdx].y;
+                    const waterSlope = (nodes[centerIdx + 2].y - nodes[centerIdx - 2].y) / (4 * (WIDGET_SIZE / NODE_COUNT));
+
+                    ship.y += (waterHeightAtShip - ship.y) * 0.15;
+                    const targetRot = Math.atan(waterSlope);
+                    ship.rot += (targetRot - ship.rot) * 0.12;
+
+                    const degrees = Math.round((currentHeading * 180 / Math.PI) % 360);
+                    compassNeedle.style.transform = `rotate(${currentHeading}rad)`;
+                    headingText.textContent = `${degrees}° N`;
                 }
-            }
 
-            // Propagate wave velocity to neighboring points
-            const leftPass = [];
-            const rightPass = [];
+                function draw() {
+                    ctx.clearRect(0, 0, WIDGET_SIZE, WIDGET_SIZE);
 
-            for (let i = 0; i < NODE_COUNT; i++) {
-                if (i > 0) {
-                    leftPass[i] = SPREAD * (nodes[i].y - nodes[i - 1].y);
-                    nodes[i - 1].velocity += leftPass[i];
-                }
-                if (i < NODE_COUNT - 1) {
-                    rightPass[i] = SPREAD * (nodes[i].y - nodes[i + 1].y);
-                    nodes[i + 1].velocity += rightPass[i];
-                }
-            }
+                    const dx = WIDGET_SIZE / (NODE_COUNT - 1);
 
-            // Ship buoyancy tracking
-            const centerIdx = Math.floor(NODE_COUNT / 2);
-            const waterHeightAtShip = nodes[centerIdx].y;
-            const waterSlope = (nodes[centerIdx + 2].y - nodes[centerIdx - 2].y) / (4 * (WIDGET_SIZE / NODE_COUNT));
-
-            // Ship floats smoothly on the water's surface
-            ship.y += (waterHeightAtShip - ship.y) * 0.15;
-            const targetRot = Math.atan(waterSlope);
-            ship.rot += (targetRot - ship.rot) * 0.12;
-
-            // Update UI Compass Indicator
-            const degrees = Math.round((currentHeading * 180 / Math.PI) % 360);
-            compassNeedle.style.transform = `rotate(${currentHeading}rad)`;
-            headingText.textContent = `${degrees}° N`;
-        }
-
-        function draw() {
-            ctx.clearRect(0, 0, WIDGET_SIZE, WIDGET_SIZE);
-
-            const dx = WIDGET_SIZE / (NODE_COUNT - 1);
-
-            // 1. Secondary Ambient Wave (Deeper layer for 3D fluid depth)
-            ctx.beginPath();
-            ctx.moveTo(0, WIDGET_SIZE);
-            for (let i = 0; i < NODE_COUNT; i++) {
-                const ambientWave = Math.sin(clock * 1.5 + i * 0.4) * 4;
-                ctx.lineTo(i * dx, nodes[i].y + ambientWave - 4);
-            }
-            ctx.lineTo(WIDGET_SIZE, WIDGET_SIZE);
-            ctx.closePath();
-            ctx.fillStyle = 'rgba(0, 119, 182, 0.45)';
-            ctx.fill();
-
-            // 2. The Ship (Vector rendered, dynamic rocking & floating)
-            ctx.save();
-            ctx.translate(ship.x, ship.y - 12);
-            ctx.rotate(ship.rot);
-
-            // Ship Hull
-            ctx.beginPath();
-            ctx.moveTo(-28, 4);
-            ctx.lineTo(-20, 16);
-            ctx.lineTo(20, 16);
-            ctx.lineTo(30, 4);
-            ctx.closePath();
-            ctx.fillStyle = '#ffffff';
-            ctx.shadowColor = 'rgba(0,0,0,0.2)';
-            ctx.shadowBlur = 6;
-            ctx.fill();
-
-            // Cabin
-            ctx.fillStyle = '#ff4757';
-            ctx.fillRect(-12, -4, 24, 8);
-
-            // Mast & Flag
-            ctx.strokeStyle = '#2f3542';
-            ctx.lineWidth = 2.5;
-            ctx.beginPath();
-            ctx.moveTo(2, -4);
-            ctx.lineTo(2, -18);
-            ctx.stroke();
-
-            ctx.beginPath();
-            ctx.moveTo(2, -18);
-            ctx.lineTo(12, -14);
-            ctx.lineTo(2, -10);
-            ctx.closePath();
-            ctx.fillStyle = '#ffa502';
-            ctx.fill();
-
-            ctx.restore();
-
-            // 3. Primary Ocean Water Body (Front layer)
-            ctx.beginPath();
-            ctx.moveTo(0, WIDGET_SIZE);
-            ctx.lineTo(0, nodes[0].y);
-
-            // Bezier curve through nodes for liquid smoothness
-            for (let i = 0; i < NODE_COUNT - 1; i++) {
-                const cx = (i * dx + (i + 1) * dx) / 2;
-                const cy = (nodes[i].y + nodes[i + 1].y) / 2;
-                ctx.quadraticCurveTo(i * dx, nodes[i].y, cx, cy);
-            }
-            ctx.lineTo(WIDGET_SIZE, nodes[NODE_COUNT - 1].y);
-            ctx.lineTo(WIDGET_SIZE, WIDGET_SIZE);
-            ctx.closePath();
-
-            const oceanGrad = ctx.createLinearGradient(0, WIDGET_SIZE * 0.3, 0, WIDGET_SIZE);
-            oceanGrad.addColorStop(0, 'rgba(0, 180, 216, 0.88)');
-            oceanGrad.addColorStop(1, 'rgba(3, 4, 94, 0.95)');
-            ctx.fillStyle = oceanGrad;
-            ctx.fill();
-
-            // 4. White Water Surface / Crest
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-
-            // 5. Foam / whitecaps on high-velocity nodes, layered on top of the crest line
-            for (let i = 0; i < NODE_COUNT; i++) {
-                if (nodes[i].foam > 0.05) {
-                    const foamAlpha = Math.min(nodes[i].foam, 0.9);
-                    const foamRadius = 3 + nodes[i].foam * 5;
                     ctx.beginPath();
-                    ctx.arc(i * dx, nodes[i].y, foamRadius, 0, Math.PI * 2);
-                    ctx.fillStyle = `rgba(255, 255, 255, ${foamAlpha})`;
+                    ctx.moveTo(0, WIDGET_SIZE);
+                    for (let i = 0; i < NODE_COUNT; i++) {
+                        const ambientWave = Math.sin(clock * 1.5 + i * 0.4) * 4;
+                        ctx.lineTo(i * dx, nodes[i].y + ambientWave - 4);
+                    }
+                    ctx.lineTo(WIDGET_SIZE, WIDGET_SIZE);
+                    ctx.closePath();
+                    ctx.fillStyle = 'rgba(0, 119, 182, 0.45)';
                     ctx.fill();
 
-                    // A couple of smaller scattered foam flecks for texture
+                    ctx.save();
+                    ctx.translate(ship.x, ship.y - 12);
+                    ctx.rotate(ship.rot);
+
                     ctx.beginPath();
-                    ctx.arc(i * dx + foamRadius * 0.8, nodes[i].y - 2, foamRadius * 0.4, 0, Math.PI * 2);
-                    ctx.fillStyle = `rgba(255, 255, 255, ${foamAlpha * 0.7})`;
+                    ctx.moveTo(-28, 4);
+                    ctx.lineTo(-20, 16);
+                    ctx.lineTo(20, 16);
+                    ctx.lineTo(30, 4);
+                    ctx.closePath();
+                    ctx.fillStyle = '#ffffff';
+                    ctx.shadowColor = 'rgba(0,0,0,0.2)';
+                    ctx.shadowBlur = 6;
                     ctx.fill();
+
+                    ctx.fillStyle = '#ff4757';
+                    ctx.fillRect(-12, -4, 24, 8);
+
+                    ctx.strokeStyle = '#2f3542';
+                    ctx.lineWidth = 2.5;
+                    ctx.beginPath();
+                    ctx.moveTo(2, -4);
+                    ctx.lineTo(2, -18);
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.moveTo(2, -18);
+                    ctx.lineTo(12, -14);
+                    ctx.lineTo(2, -10);
+                    ctx.closePath();
+                    ctx.fillStyle = '#ffa502';
+                    ctx.fill();
+
+                    ctx.restore();
+
+                    ctx.beginPath();
+                    ctx.moveTo(0, WIDGET_SIZE);
+                    ctx.lineTo(0, nodes[0].y);
+
+                    for (let i = 0; i < NODE_COUNT - 1; i++) {
+                        const cx = (i * dx + (i + 1) * dx) / 2;
+                        const cy = (nodes[i].y + nodes[i + 1].y) / 2;
+                        ctx.quadraticCurveTo(i * dx, nodes[i].y, cx, cy);
+                    }
+                    ctx.lineTo(WIDGET_SIZE, nodes[NODE_COUNT - 1].y);
+                    ctx.lineTo(WIDGET_SIZE, WIDGET_SIZE);
+                    ctx.closePath();
+
+                    const oceanGrad = ctx.createLinearGradient(0, WIDGET_SIZE * 0.3, 0, WIDGET_SIZE);
+                    oceanGrad.addColorStop(0, 'rgba(0, 180, 216, 0.88)');
+                    oceanGrad.addColorStop(1, 'rgba(3, 4, 94, 0.95)');
+                    ctx.fillStyle = oceanGrad;
+                    ctx.fill();
+
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+
+                    for (let i = 0; i < NODE_COUNT; i++) {
+                        if (nodes[i].foam > 0.05) {
+                            const foamAlpha = Math.min(nodes[i].foam, 0.9);
+                            const foamRadius = 3 + nodes[i].foam * 5;
+                            ctx.beginPath();
+                            ctx.arc(i * dx, nodes[i].y, foamRadius, 0, Math.PI * 2);
+                            ctx.fillStyle = `rgba(255, 255, 255, ${foamAlpha})`;
+                            ctx.fill();
+
+                            ctx.beginPath();
+                            ctx.arc(i * dx + foamRadius * 0.8, nodes[i].y - 2, foamRadius * 0.4, 0, Math.PI * 2);
+                            ctx.fillStyle = `rgba(255, 255, 255, ${foamAlpha * 0.7})`;
+                            ctx.fill();
+                        }
+                    }
                 }
-            }
-        }
 
-        function loop() {
-            updatePhysics();
-            draw();
-            requestAnimationFrame(loop);
-        }
+                function loop() {
+                    updatePhysics();
+                    draw();
+                    requestAnimationFrame(loop);
+                }
 
-        // --- Permissions Setup ---
-        startBtn.addEventListener('click', async () => {
-            calibratingText.style.display = 'block';
-            startBtn.style.display = 'none';
+                // --- Permissions Setup ---
+                startBtn.addEventListener('click', async () => {
+                    calibratingText.style.display = 'block';
+                    startBtn.style.display = 'none';
 
-            // iOS Permission Request
-            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                try {
-                    const orientPerm = await DeviceOrientationEvent.requestPermission();
-                    const motionPerm = (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function')
-                        ? await DeviceMotionEvent.requestPermission()
-                        : 'granted';
+                    const attachListeners = () => {
+                        // Register all listeners simultaneously. Deduplication is handled inside the event processors.
+                        window.addEventListener('deviceorientationabsolute', onOrientationAbsolute, true);
+                        window.addEventListener('deviceorientation', onOrientation, true);
+                        window.addEventListener('devicemotion', onMotion, true);
+                    };
 
-                    if (orientPerm === 'granted' && motionPerm === 'granted') {
-                        window.addEventListener('deviceorientation', onOrientation);
-                        window.addEventListener('devicemotion', onMotion);
+                    // iOS Permission Request
+                    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                        try {
+                            const orientPerm = await DeviceOrientationEvent.requestPermission();
+                            let motionPerm = 'granted';
+                            if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+                                motionPerm = await DeviceMotionEvent.requestPermission();
+                            }
+
+                            if (orientPerm === 'granted' && motionPerm === 'granted') {
+                                attachListeners();
+                            } else {
+                                forceCalibration();
+                            }
+                        } catch (err) {
+                            console.error(err);
+                            forceCalibration();
+                        }
                     } else {
-                        // Permission denied: fall back so the UI doesn't stay stuck on calibration
+                        // Android & Standard Browsers
+                        attachListeners();
+                    }
+
+                    // Safety fallback: prevent lockup if no sensors exist
+                    setTimeout(forceCalibration, 2000);
+                });
+        
+                function forceCalibration() {
+                    if (!calibrated) {
                         calibrated = true;
                         calibratingText.style.display = 'none';
                         permissionUI.style.display = 'none';
                     }
-                } catch (err) {
-                    console.error(err);
-                    calibrated = true;
-                    calibratingText.style.display = 'none';
-                    permissionUI.style.display = 'none';
                 }
-            } else {
-                // Android & Standard Browsers
-                // Only bind ONE orientation source. Binding both 'deviceorientationabsolute'
-                // and 'deviceorientation' at once causes double-firing per frame, which
-                // corrupts calibration and makes tilt/compass readings jitter or cancel out.
-                // Prefer absolute orientation (more reliable gravity/compass reference on
-                // Android); if it never fires, fall back to relative orientation.
-                let usingAbsolute = false;
 
-                function absoluteHandler(e) {
-                    usingAbsolute = true;
-                    usingAbsoluteGlobal = true;
-                    onOrientation(e);
-                }
-                window.addEventListener('deviceorientationabsolute', absoluteHandler);
-
-                setTimeout(() => {
-                    if (!usingAbsolute) {
-                        window.addEventListener('deviceorientation', onOrientation);
-                    }
-                }, 300);
-
-                window.addEventListener('devicemotion', onMotion);
-            }
-
-            // Safety fallback: if no orientation events arrive (desktop, unsupported browser),
-            // don't leave the user stuck on the calibration screen forever
-            setTimeout(() => {
-                if (!calibrated) {
-                    calibrated = true;
-                    calibratingText.style.display = 'none';
-                    permissionUI.style.display = 'none';
-                }
-            }, 2000);
-        });
-
-        // Desktop Fallback (Drag or move mouse to test tilting)
+                // Desktop Fallback (Drag or move mouse to test tilting)
         window.addEventListener('mousemove', (e) => {
             if (permissionUI.style.display !== 'none') permissionUI.style.display = 'none';
             calibrated = true;
