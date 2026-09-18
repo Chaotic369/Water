@@ -212,10 +212,14 @@
         }
 
         function onMotion(e) {
-            const acc = e.acceleration || e.accelerationIncludingGravity;
-            if (!acc || acc.x === null) return;
+                    let acc = e.acceleration;
+                    // Some devices provide null for acceleration but populate accelerationIncludingGravity
+                    if (!acc || acc.x == null) {
+                        acc = e.accelerationIncludingGravity;
+                    }
+                    if (!acc || acc.x == null) return;
 
-            // Compute sudden jerk/acceleration delta
+                    // Compute sudden jerk/acceleration delta
             const dx = acc.x - lastShake.x;
             const dy = acc.y - lastShake.y;
             const dz = acc.z - lastShake.z;
@@ -406,12 +410,14 @@
                     console.error(err);
                 }
             } else {
-                // Android & Standard Browsers
-                window.addEventListener('deviceorientation', onOrientation);
-                window.addEventListener('devicemotion', onMotion);
-            }
+                            // Android & Standard Browsers
+                            // Android often needs absolute orientation for compass/gravity to behave correctly
+                            window.addEventListener('deviceorientationabsolute', onOrientation);
+                            window.addEventListener('deviceorientation', onOrientation);
+                            window.addEventListener('devicemotion', onMotion);
+                        }
 
-            permissionUI.style.display = 'none';
+                        permissionUI.style.display = 'none';
         });
 
         // Desktop Fallback (Drag or move mouse to test tilting)
