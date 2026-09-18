@@ -220,8 +220,13 @@
         let calibrationFrames = 0;
 
         function onOrientation(e) {
-            let gamma = (e.gamma || 0) * (Math.PI / 180); // Roll
-            let beta = (e.beta || 0) * (Math.PI / 180);   // Pitch
+            // Some devices briefly report null gamma/beta right after permission is granted,
+            // before the sensor warms up. Treating null as 0 snaps tilt to dead-center;
+            // instead, just skip that frame and wait for a real reading.
+            if (e.gamma == null || e.beta == null) return;
+
+            let gamma = e.gamma * (Math.PI / 180); // Roll
+            let beta = e.beta * (Math.PI / 180);   // Pitch
             let alpha = (e.alpha || 0) * (Math.PI / 180); // Compass
 
             // During the brief calibration window, capture resting beta as the zero-point
@@ -506,9 +511,25 @@
                 }
             } else {
                 // Android & Standard Browsers
-                // Android often needs absolute orientation for compass/gravity to behave correctly
-                window.addEventListener('deviceorientationabsolute', onOrientation);
-                window.addEventListener('deviceorientation', onOrientation);
+                // Only bind ONE orientation source. Binding both 'deviceorientationabsolute'
+                // and 'deviceorientation' at once causes double-firing per frame, which
+                // corrupts calibration and makes tilt/compass readings jitter or cancel out.
+                // Prefer absolute orientation (more reliable gravity/compass reference on
+                // Android); if it never fires, fall back to relative orientation.
+                let usingAbsolute = false;
+
+                function absoluteHandler(e) {
+                    usingAbsolute = true;
+                    onOrientation(e);
+                }
+                window.addEventListener('deviceorientationabsolute', absoluteHandler);
+
+                setTimeout(() => {
+                    if (!usingAbsolute) {
+                        window.addEventListener('deviceorientation', onOrientation);
+                    }
+                }, 300);
+
                 window.addEventListener('devicemotion', onMotion);
             }
 
