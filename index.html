@@ -1,58 +1,48 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="hi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gyroscope Ocean Widget</title>
+    <title>True Horizon & Compass Widget</title>
     <style>
-        * {
-            box-sizing: border-box;
-        }
-
+        * { box-sizing: border-box; }
         body {
-            margin: 0;
-            padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            background-color: #1a1a2e;
-            font-family: system-ui, -apple-system, sans-serif;
-            overflow: hidden;
+            margin: 0; padding: 0;
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh; background-color: #1a1a2e;
+            font-family: system-ui, sans-serif; overflow: hidden;
         }
 
-        /* The Widget Box */
         .widget {
-            width: 300px;
-            height: 300px;
-            border-radius: 45px;
-            background: linear-gradient(135deg, #87CEEB 0%, #e0f6ff 100%); /* Sky background */
-            position: relative;
-            overflow: hidden;
-            box-shadow: 
-                inset 0 0 20px rgba(255, 255, 255, 0.5),
-                0 20px 50px rgba(0, 0, 0, 0.5);
-            border: 4px solid rgba(255, 255, 255, 0.1);
+            width: 320px; height: 320px;
+            border-radius: 50%; /* कंपास जैसा गोल लुक */
+            background: linear-gradient(135deg, #87CEEB 0%, #e0f6ff 100%);
+            position: relative; overflow: hidden;
+            box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.5), 0 20px 50px rgba(0, 0, 0, 0.5);
+            border: 8px solid #333;
         }
 
-        /* Group containing water and ship to rotate together based on gravity */
+        /* दिशा दिखाने वाले मार्कर (N, S, E, W) */
+        .compass-marks {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 5; pointer-events: none;
+        }
+        .mark { position: absolute; font-weight: bold; color: rgba(0,0,0,0.5); font-size: 14px; }
+        .mark.n { top: 10px; left: 50%; transform: translateX(-50%); color: red; }
+        .mark.s { bottom: 10px; left: 50%; transform: translateX(-50%); }
+        .mark.e { top: 50%; right: 10px; transform: translateY(-50%); }
+        .mark.w { top: 50%; left: 10px; transform: translateY(-50%); }
+
+        /* पानी का कंटेनर जो क्षितिज (horizon) के साथ स्थिर रहेगा */
         .physics-group {
-            position: absolute;
-            top: 0;
-            left: -50%;
-            width: 200%; /* Wider than widget so edges don't show when tilted */
-            height: 100%;
+            position: absolute; top: 0; left: -50%;
+            width: 200%; height: 100%;
             transform-origin: 50% 50%;
             transition: transform 0.1s ease-out;
         }
 
-        /* CSS trick for animated water: Spinning rounded squares */
         .water-layer {
-            position: absolute;
-            top: 50%;
-            left: 0;
-            width: 100%;
-            height: 200%;
+            position: absolute; top: 50%; left: 0; width: 100%; height: 200%;
             background: rgba(0, 119, 190, 0.8);
             border-radius: 40%;
             animation: spin 6s infinite linear;
@@ -60,157 +50,111 @@
 
         .water-layer:nth-child(2) {
             background: rgba(0, 153, 219, 0.6);
-            border-radius: 45%;
+            border-radius: 45%; top: 52%;
             animation: spin 4s infinite linear reverse;
-            top: 52%;
         }
 
-        /* The Ship */
-        .ship {
-            position: absolute;
-            top: calc(50% - 45px); /* Positioned sitting on the water */
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 50px;
-            animation: bob 2s infinite ease-in-out;
-            text-shadow: 0 5px 10px rgba(0,0,0,0.3);
+        /* जहाज जो उत्तर दिशा की ओर घूमेगा */
+        .ship-container {
+            position: absolute; top: calc(50% - 30px); left: 50%;
+            transition: transform 0.1s ease-out;
             z-index: 10;
         }
-
-        /* Sun detail for aesthetic */
-        .sun {
-            position: absolute;
-            top: 30px;
-            right: 40px;
-            width: 40px;
-            height: 40px;
-            background: #FFD700;
-            border-radius: 50%;
-            box-shadow: 0 0 20px #FFD700;
+        
+        .ship {
+            font-size: 50px;
+            transform-origin: center;
+            text-shadow: 0 5px 10px rgba(0,0,0,0.3);
         }
 
-        /* Permission Overlay UI */
         #permission-ui {
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.8);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 100;
-            color: white;
-            text-align: center;
-            padding: 20px;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 100;
+            color: white; text-align: center; padding: 20px;
         }
 
         button {
-            padding: 15px 30px;
-            font-size: 18px;
-            background: #0077be;
-            color: white;
-            border: none;
-            border-radius: 25px;
-            cursor: pointer;
-            margin-top: 20px;
-            box-shadow: 0 5px 15px rgba(0,119,190,0.4);
-            transition: transform 0.2s;
+            padding: 15px 30px; font-size: 18px; background: #0077be;
+            color: white; border: none; border-radius: 25px; margin-top: 20px;
         }
 
-        button:active {
-            transform: scale(0.95);
-        }
-
-        @keyframes spin {
-            100% { transform: rotate(360deg); }
-        }
-
-        @keyframes bob {
-            0%, 100% { top: calc(50% - 45px); transform: translateX(-50%) rotate(0deg); }
-            50% { top: calc(50% - 38px); transform: translateX(-50%) rotate(-5deg); }
-        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
-    <!-- Overlay required for iOS to ask for Gyroscope permissions -->
     <div id="permission-ui">
-        <h2>Ocean Widget</h2>
-        <p>Allow access to your device's gyroscope to see the water move!</p>
-        <button id="start-btn">Enable Gyroscope</button>
+        <h2>Compass & Horizon Widget</h2>
+        <p>दिशा और झुकाव सेंसर को चालू करें।</p>
+        <button id="start-btn">Enable Sensors</button>
     </div>
 
-    <!-- The actual widget -->
     <div class="widget">
-        <div class="sun"></div>
+        <div class="compass-marks">
+            <div class="mark n">N</div>
+            <div class="mark s">S</div>
+            <div class="mark e">E</div>
+            <div class="mark w">W</div>
+        </div>
+        
         <div class="physics-group" id="physics-group">
             <div class="water-layer"></div>
             <div class="water-layer"></div>
+        </div>
+        
+        <div class="ship-container" id="ship-container">
             <div class="ship">🚢</div>
         </div>
     </div>
 
     <script>
         const physicsGroup = document.getElementById('physics-group');
+        const shipContainer = document.getElementById('ship-container');
         const permissionUI = document.getElementById('permission-ui');
         const startBtn = document.getElementById('start-btn');
 
-        // Handles the math to tilt the water
-        function handleOrientation(gamma, beta) {
-            // Gamma is left/right tilt (degrees from -90 to 90)
-            // Beta is front/back tilt 
-            
-            // Limit values to prevent water from flipping completely upside down unnaturally
+        function handleOrientation(event) {
+            // दिशा (Compass Heading) के लिए Alpha
+            let alpha = event.alpha || 0; 
+            // आगे-पीछे का झुकाव (Pitch)
+            let beta = event.beta || 0;   
+            // दाएं-बाएं का झुकाव (Roll)
+            let gamma = event.gamma || 0; 
+
+            // iOS और Android के लिए कंपास की दिशा को सही करना
+            let compassHeading = alpha;
+            if (event.webkitCompassHeading) {
+                compassHeading = event.webkitCompassHeading; // iOS
+            } else {
+                compassHeading = 360 - alpha; // Android
+            }
+
+            // 1. पानी को असली क्षितिज (Gravity/Horizon) के साथ स्थिर रखना
             let tiltRotation = -gamma;
-            if (tiltRotation > 90) tiltRotation = 90;
-            if (tiltRotation < -90) tiltRotation = -90;
-
-            // Use beta (front/back tilt) to make the water level rise or fall slightly
-            let verticalOffset = (beta - 45) * 0.5; 
-            if (verticalOffset > 30) verticalOffset = 30;
-            if (verticalOffset < -30) verticalOffset = -30;
-
-            // Apply the transform to the group containing the water and ship
+            if (beta > 90 || beta < -90) { tiltRotation = gamma; } // अगर फोन उल्टा हो
+            let verticalOffset = (beta - 45) * 0.8; 
+            
             physicsGroup.style.transform = `translateY(${verticalOffset}px) rotate(${tiltRotation}deg)`;
+
+            // 2. जहाज को कंपास की सुई (Maps की तरह) बनाना जो दिशा के हिसाब से घूमे
+            shipContainer.style.transform = `translateX(-50%) rotate(${-compassHeading}deg)`;
         }
 
-        // Setup Device Orientation
         startBtn.addEventListener('click', async () => {
-            // Modern iOS devices require explicit permission
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 try {
                     const permission = await DeviceOrientationEvent.requestPermission();
                     if (permission === 'granted') {
-                        window.addEventListener('deviceorientation', (e) => handleOrientation(e.gamma, e.beta));
-                    } else {
-                        alert('Permission denied. Try the mouse fallback on a computer!');
+                        window.addEventListener('deviceorientation', handleOrientation);
                     }
-                } catch (error) {
-                    console.error(error);
-                }
+                } catch (error) { console.error(error); }
             } else {
-                // Non-iOS devices (Android) don't need explicit request wrappers usually
-                window.addEventListener('deviceorientation', (e) => handleOrientation(e.gamma, e.beta));
+                // Android के लिए absolute orientation का उपयोग (ताकि असली उत्तर दिशा मिले)
+                window.addEventListener('deviceorientationabsolute', handleOrientation);
+                window.addEventListener('deviceorientation', handleOrientation);
             }
-            
-            // Hide the UI
             permissionUI.style.display = 'none';
-        });
-
-        // FALLBACK: If the user is on a desktop computer, use the mouse to simulate tilting!
-        window.addEventListener('mousemove', (e) => {
-            if (permissionUI.style.display !== 'none') {
-                permissionUI.style.display = 'none'; // Auto-hide overlay on desktop
-            }
-            
-            // Calculate fake gamma and beta based on mouse position relative to screen center
-            const screenX = window.innerWidth;
-            const screenY = window.innerHeight;
-            
-            const fakeGamma = ((e.clientX / screenX) - 0.5) * 90; // ranges from -45 to 45
-            const fakeBeta = ((e.clientY / screenY) - 0.5) * 90 + 45; 
-            
-            handleOrientation(fakeGamma, fakeBeta);
         });
     </script>
 </body>
