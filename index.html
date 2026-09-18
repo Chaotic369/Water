@@ -1,161 +1,434 @@
 <!DOCTYPE html>
-<html lang="hi">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>True Horizon & Compass Widget</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Realistic Ocean & Compass Physics</title>
     <style>
-        * { box-sizing: border-box; }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
         body {
-            margin: 0; padding: 0;
-            display: flex; justify-content: center; align-items: center;
-            height: 100vh; background-color: #1a1a2e;
-            font-family: system-ui, sans-serif; overflow: hidden;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: radial-gradient(circle at center, #1b2735 0%, #090a0f 100%);
+            font-family: system-ui, -apple-system, sans-serif;
+            overflow: hidden;
         }
 
-        .widget {
-            width: 320px; height: 320px;
-            border-radius: 50%; /* कंपास जैसा गोल लुक */
-            background: linear-gradient(135deg, #87CEEB 0%, #e0f6ff 100%);
-            position: relative; overflow: hidden;
-            box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.5), 0 20px 50px rgba(0, 0, 0, 0.5);
-            border: 8px solid #333;
+        /* Widget Container */
+        .widget-box {
+            position: relative;
+            width: 320px;
+            height: 320px;
+            border-radius: 44px;
+            overflow: hidden;
+            box-shadow: 
+                0 25px 50px -12px rgba(0, 0, 0, 0.7),
+                inset 0 0 0 2px rgba(255, 255, 255, 0.15),
+                inset 0 2px 10px rgba(255, 255, 255, 0.2);
+            background: linear-gradient(to bottom, #74ebd5, #9face6);
         }
 
-        /* दिशा दिखाने वाले मार्कर (N, S, E, W) */
-        .compass-marks {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 5; pointer-events: none;
-        }
-        .mark { position: absolute; font-weight: bold; color: rgba(0,0,0,0.5); font-size: 14px; }
-        .mark.n { top: 10px; left: 50%; transform: translateX(-50%); color: red; }
-        .mark.s { bottom: 10px; left: 50%; transform: translateX(-50%); }
-        .mark.e { top: 50%; right: 10px; transform: translateY(-50%); }
-        .mark.w { top: 50%; left: 10px; transform: translateY(-50%); }
-
-        /* पानी का कंटेनर जो क्षितिज (horizon) के साथ स्थिर रहेगा */
-        .physics-group {
-            position: absolute; top: 0; left: -50%;
-            width: 200%; height: 100%;
-            transform-origin: 50% 50%;
-            transition: transform 0.1s ease-out;
-        }
-
-        .water-layer {
-            position: absolute; top: 50%; left: 0; width: 100%; height: 200%;
-            background: rgba(0, 119, 190, 0.8);
-            border-radius: 40%;
-            animation: spin 6s infinite linear;
-        }
-
-        .water-layer:nth-child(2) {
-            background: rgba(0, 153, 219, 0.6);
-            border-radius: 45%; top: 52%;
-            animation: spin 4s infinite linear reverse;
-        }
-
-        /* जहाज जो उत्तर दिशा की ओर घूमेगा */
-        .ship-container {
-            position: absolute; top: calc(50% - 30px); left: 50%;
-            transition: transform 0.1s ease-out;
+        /* Compass Header Badge */
+        .compass-indicator {
+            position: absolute;
+            top: 14px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            padding: 4px 14px;
+            border-radius: 20px;
+            color: #fff;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 1px;
             z-index: 10;
-        }
-        
-        .ship {
-            font-size: 50px;
-            transform-origin: center;
-            text-shadow: 0 5px 10px rgba(0,0,0,0.3);
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
 
+        .compass-needle {
+            display: inline-block;
+            color: #ff4757;
+            font-size: 14px;
+            transition: transform 0.05s linear;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Permission UI */
         #permission-ui {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9); display: flex; flex-direction: column;
-            justify-content: center; align-items: center; z-index: 100;
-            color: white; text-align: center; padding: 20px;
+            position: fixed;
+            inset: 0;
+            background: rgba(10, 15, 25, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            color: white;
+            text-align: center;
+            padding: 24px;
+        }
+
+        #permission-ui h2 {
+            margin: 0 0 10px 0;
+            font-size: 24px;
+            letter-spacing: 0.5px;
+        }
+
+        #permission-ui p {
+            color: #a0aec0;
+            font-size: 15px;
+            line-height: 1.5;
+            max-width: 280px;
+            margin-bottom: 24px;
         }
 
         button {
-            padding: 15px 30px; font-size: 18px; background: #0077be;
-            color: white; border: none; border-radius: 25px; margin-top: 20px;
+            padding: 14px 32px;
+            font-size: 16px;
+            font-weight: 600;
+            background: linear-gradient(135deg, #00b4db, #0083b0);
+            color: white;
+            border: none;
+            border-radius: 30px;
+            box-shadow: 0 8px 20px rgba(0, 180, 219, 0.35);
+            cursor: pointer;
+            transition: transform 0.15s ease;
         }
 
-        @keyframes spin { 100% { transform: rotate(360deg); } }
+        button:active {
+            transform: scale(0.96);
+        }
     </style>
 </head>
 <body>
 
     <div id="permission-ui">
-        <h2>Compass & Horizon Widget</h2>
-        <p>दिशा और झुकाव सेंसर को चालू करें।</p>
-        <button id="start-btn">Enable Sensors</button>
+        <h2>Ocean Horizon & Motion</h2>
+        <p>Tilt and shake your device to experience physical fluid dynamics.</p>
+        <button id="start-btn">Calibrate & Start</button>
     </div>
 
-    <div class="widget">
-        <div class="compass-marks">
-            <div class="mark n">N</div>
-            <div class="mark s">S</div>
-            <div class="mark e">E</div>
-            <div class="mark w">W</div>
+    <div class="widget-box">
+        <div class="compass-indicator">
+            <span class="compass-needle" id="compass-needle">▲</span>
+            <span id="heading-text">0° N</span>
         </div>
-        
-        <div class="physics-group" id="physics-group">
-            <div class="water-layer"></div>
-            <div class="water-layer"></div>
-        </div>
-        
-        <div class="ship-container" id="ship-container">
-            <div class="ship">🚢</div>
-        </div>
+        <canvas id="ocean-canvas"></canvas>
     </div>
 
     <script>
-        const physicsGroup = document.getElementById('physics-group');
-        const shipContainer = document.getElementById('ship-container');
+        const canvas = document.getElementById('ocean-canvas');
+        const ctx = canvas.getContext('2d');
         const permissionUI = document.getElementById('permission-ui');
         const startBtn = document.getElementById('start-btn');
+        const compassNeedle = document.getElementById('compass-needle');
+        const headingText = document.getElementById('heading-text');
 
-        function handleOrientation(event) {
-            // दिशा (Compass Heading) के लिए Alpha
-            let alpha = event.alpha || 0; 
-            // आगे-पीछे का झुकाव (Pitch)
-            let beta = event.beta || 0;   
-            // दाएं-बाएं का झुकाव (Roll)
-            let gamma = event.gamma || 0; 
+        // High DPI Display Configuration
+        const WIDGET_SIZE = 320;
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = WIDGET_SIZE * dpr;
+        canvas.height = WIDGET_SIZE * dpr;
+        ctx.scale(dpr, dpr);
 
-            // iOS और Android के लिए कंपास की दिशा को सही करना
-            let compassHeading = alpha;
-            if (event.webkitCompassHeading) {
-                compassHeading = event.webkitCompassHeading; // iOS
-            } else {
-                compassHeading = 360 - alpha; // Android
-            }
-
-            // 1. पानी को असली क्षितिज (Gravity/Horizon) के साथ स्थिर रखना
-            let tiltRotation = -gamma;
-            if (beta > 90 || beta < -90) { tiltRotation = gamma; } // अगर फोन उल्टा हो
-            let verticalOffset = (beta - 45) * 0.8; 
-            
-            physicsGroup.style.transform = `translateY(${verticalOffset}px) rotate(${tiltRotation}deg)`;
-
-            // 2. जहाज को कंपास की सुई (Maps की तरह) बनाना जो दिशा के हिसाब से घूमे
-            shipContainer.style.transform = `translateX(-50%) rotate(${-compassHeading}deg)`;
+        // --- Physics Engine & Waves ---
+        const NODE_COUNT = 36;
+        const nodes = [];
+        for (let i = 0; i < NODE_COUNT; i++) {
+            nodes.push({
+                y: 0,
+                targetY: 0,
+                velocity: 0
+            });
         }
 
+        const SPRING_K = 0.035;       // Water surface tension
+        const DAMPING = 0.04;         // Wave decay speed
+        const SPREAD = 0.22;          // Wave transmission across nodes
+
+        // State & Interpolation Targets
+        let targetTilt = 0;           // Gravity roll target (radians)
+        let currentTilt = 0;          // Smooth interpolated tilt
+        let targetPitch = 0;          // Front/back tilt
+        let currentPitch = 0;
+
+        let targetHeading = 0;        // Compass direction (radians)
+        let currentHeading = 0;
+
+        let lastShake = { x: 0, y: 0, z: 0 };
+
+        // Ship Object State
+        const ship = {
+            x: WIDGET_SIZE / 2,
+            y: WIDGET_SIZE / 2,
+            rot: 0,
+            vy: 0
+        };
+
+        // Shortest-distance angle interpolation to prevent 360° spin flips
+        function lerpAngle(current, target, factor) {
+            let diff = (target - current) % (Math.PI * 2);
+            if (diff < -Math.PI) diff += Math.PI * 2;
+            if (diff > Math.PI) diff -= Math.PI * 2;
+            return current + diff * factor;
+        }
+
+        // --- Sensor Event Listeners ---
+        function onOrientation(e) {
+            let gamma = (e.gamma || 0) * (Math.PI / 180); // Roll
+            let beta = (e.beta || 0) * (Math.PI / 180);   // Pitch
+            let alpha = (e.alpha || 0) * (Math.PI / 180); // Compass
+
+            // Device horizon angle relative to ground gravity
+            targetTilt = -Math.sin(gamma); 
+            targetPitch = Math.max(-0.5, Math.min(0.5, (beta - 0.78) * 0.5));
+
+            // Accurate Compass Heading (iOS support included)
+            if (e.webkitCompassHeading !== undefined) {
+                targetHeading = (e.webkitCompassHeading * Math.PI) / 180;
+            } else {
+                targetHeading = (2 * Math.PI) - alpha;
+            }
+        }
+
+        function onMotion(e) {
+            const acc = e.acceleration || e.accelerationIncludingGravity;
+            if (!acc || acc.x === null) return;
+
+            // Compute sudden jerk/acceleration delta
+            const dx = acc.x - lastShake.x;
+            const dy = acc.y - lastShake.y;
+            const dz = acc.z - lastShake.z;
+
+            lastShake = { x: acc.x, y: acc.y, z: acc.z };
+
+            const jerk = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+            // If a shake or jerk is detected, inject physical impulse into liquid
+            if (jerk > 3.0) {
+                const splashForce = Math.min(jerk * 1.8, 45);
+                
+                // Direction of shake determines slosh side
+                if (dx > 0) {
+                    nodes[0].velocity += splashForce * 0.8;
+                    nodes[nodes.length - 1].velocity -= splashForce * 0.8;
+                } else {
+                    nodes[0].velocity -= splashForce * 0.8;
+                    nodes[nodes.length - 1].velocity += splashForce * 0.8;
+                }
+
+                // Random chop in the middle
+                nodes[Math.floor(NODE_COUNT / 2)].velocity += (Math.random() - 0.5) * splashForce;
+            }
+        }
+
+        // --- Animation & Physics Loop ---
+        let clock = 0;
+
+        function updatePhysics() {
+            clock += 0.04;
+
+            // Ultra-smooth interpolation (Filters out sensor micro-jitters)
+            currentTilt += (targetTilt - currentTilt) * 0.08;
+            currentPitch += (targetPitch - currentPitch) * 0.08;
+            currentHeading = lerpAngle(currentHeading, targetHeading, 0.07);
+
+            // Water surface baseline tilt
+            const baselineCenter = (WIDGET_SIZE * 0.52) + (currentPitch * 40);
+            const maxTiltDrop = (WIDGET_SIZE * 0.45) * currentTilt;
+
+            for (let i = 0; i < NODE_COUNT; i++) {
+                const ratio = (i / (NODE_COUNT - 1)) - 0.5; // -0.5 to 0.5
+                nodes[i].targetY = baselineCenter + (ratio * maxTiltDrop * 2);
+
+                // Spring-damper physics
+                const diff = nodes[i].y - nodes[i].targetY;
+                const force = -SPRING_K * diff - DAMPING * nodes[i].velocity;
+                nodes[i].velocity += force;
+                nodes[i].y += nodes[i].velocity;
+            }
+
+            // Propagate wave velocity to neighboring points
+            const leftPass = [];
+            const rightPass = [];
+
+            for (let i = 0; i < NODE_COUNT; i++) {
+                if (i > 0) {
+                    leftPass[i] = SPREAD * (nodes[i].y - nodes[i - 1].y);
+                    nodes[i - 1].velocity += leftPass[i];
+                }
+                if (i < NODE_COUNT - 1) {
+                    rightPass[i] = SPREAD * (nodes[i].y - nodes[i + 1].y);
+                    nodes[i + 1].velocity += rightPass[i];
+                }
+            }
+
+            // Ship buoyancy tracking
+            const centerIdx = Math.floor(NODE_COUNT / 2);
+            const waterHeightAtShip = nodes[centerIdx].y;
+            const waterSlope = (nodes[centerIdx + 2].y - nodes[centerIdx - 2].y) / (4 * (WIDGET_SIZE / NODE_COUNT));
+
+            // Ship floats smoothly on the water's surface
+            ship.y += (waterHeightAtShip - ship.y) * 0.15;
+            const targetRot = Math.atan(waterSlope);
+            ship.rot += (targetRot - ship.rot) * 0.12;
+
+            // Update UI Compass Indicator
+            const degrees = Math.round((currentHeading * 180 / Math.PI) % 360);
+            compassNeedle.style.transform = `rotate(${currentHeading}rad)`;
+            headingText.textContent = `${degrees}° N`;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, WIDGET_SIZE, WIDGET_SIZE);
+
+            const dx = WIDGET_SIZE / (NODE_COUNT - 1);
+
+            // 1. Secondary Ambient Wave (Deeper layer for 3D fluid depth)
+            ctx.beginPath();
+            ctx.moveTo(0, WIDGET_SIZE);
+            for (let i = 0; i < NODE_COUNT; i++) {
+                const ambientWave = Math.sin(clock * 1.5 + i * 0.4) * 4;
+                ctx.lineTo(i * dx, nodes[i].y + ambientWave - 4);
+            }
+            ctx.lineTo(WIDGET_SIZE, WIDGET_SIZE);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(0, 119, 182, 0.45)';
+            ctx.fill();
+
+            // 2. The Ship (Vector rendered, dynamic rocking & floating)
+            ctx.save();
+            ctx.translate(ship.x, ship.y - 12);
+            ctx.rotate(ship.rot);
+
+            // Ship Hull
+            ctx.beginPath();
+            ctx.moveTo(-28, 4);
+            ctx.lineTo(-20, 16);
+            ctx.lineTo(20, 16);
+            ctx.lineTo(30, 4);
+            ctx.closePath();
+            ctx.fillStyle = '#ffffff';
+            ctx.shadowColor = 'rgba(0,0,0,0.2)';
+            ctx.shadowBlur = 6;
+            ctx.fill();
+
+            // Cabin
+            ctx.fillStyle = '#ff4757';
+            ctx.fillRect(-12, -4, 24, 8);
+
+            // Mast & Flag
+            ctx.strokeStyle = '#2f3542';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.moveTo(2, -4);
+            ctx.lineTo(2, -18);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(2, -18);
+            ctx.lineTo(12, -14);
+            ctx.lineTo(2, -10);
+            ctx.closePath();
+            ctx.fillStyle = '#ffa502';
+            ctx.fill();
+
+            ctx.restore();
+
+            // 3. Primary Ocean Water Body (Front layer)
+            ctx.beginPath();
+            ctx.moveTo(0, WIDGET_SIZE);
+            ctx.lineTo(0, nodes[0].y);
+
+            // Bezier curve through nodes for liquid smoothness
+            for (let i = 0; i < NODE_COUNT - 1; i++) {
+                const cx = (i * dx + (i + 1) * dx) / 2;
+                const cy = (nodes[i].y + nodes[i + 1].y) / 2;
+                ctx.quadraticCurveTo(i * dx, nodes[i].y, cx, cy);
+            }
+            ctx.lineTo(WIDGET_SIZE, nodes[NODE_COUNT - 1].y);
+            ctx.lineTo(WIDGET_SIZE, WIDGET_SIZE);
+            ctx.closePath();
+
+            const oceanGrad = ctx.createLinearGradient(0, WIDGET_SIZE * 0.3, 0, WIDGET_SIZE);
+            oceanGrad.addColorStop(0, 'rgba(0, 180, 216, 0.88)');
+            oceanGrad.addColorStop(1, 'rgba(3, 4, 94, 0.95)');
+            ctx.fillStyle = oceanGrad;
+            ctx.fill();
+
+            // 4. White Water Surface / Crest
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        function loop() {
+            updatePhysics();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        // --- Permissions Setup ---
         startBtn.addEventListener('click', async () => {
+            // iOS Permission Request
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 try {
-                    const permission = await DeviceOrientationEvent.requestPermission();
-                    if (permission === 'granted') {
-                        window.addEventListener('deviceorientation', handleOrientation);
+                    const orientPerm = await DeviceOrientationEvent.requestPermission();
+                    const motionPerm = (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function')
+                        ? await DeviceMotionEvent.requestPermission()
+                        : 'granted';
+
+                    if (orientPerm === 'granted' && motionPerm === 'granted') {
+                        window.addEventListener('deviceorientation', onOrientation);
+                        window.addEventListener('devicemotion', onMotion);
                     }
-                } catch (error) { console.error(error); }
+                } catch (err) {
+                    console.error(err);
+                }
             } else {
-                // Android के लिए absolute orientation का उपयोग (ताकि असली उत्तर दिशा मिले)
-                window.addEventListener('deviceorientationabsolute', handleOrientation);
-                window.addEventListener('deviceorientation', handleOrientation);
+                // Android & Standard Browsers
+                window.addEventListener('deviceorientation', onOrientation);
+                window.addEventListener('devicemotion', onMotion);
             }
+
             permissionUI.style.display = 'none';
         });
+
+        // Desktop Fallback (Drag or move mouse to test tilting)
+        window.addEventListener('mousemove', (e) => {
+            if (permissionUI.style.display !== 'none') permissionUI.style.display = 'none';
+            const normX = (e.clientX / window.innerWidth) - 0.5;
+            targetTilt = normX * 0.8;
+            targetHeading = normX * Math.PI;
+        });
+
+        // Desktop Click to trigger splash
+        window.addEventListener('click', () => {
+            nodes[0].velocity += 20;
+            nodes[nodes.length - 1].velocity -= 20;
+        });
+
+        loop();
     </script>
 </body>
 </html>
