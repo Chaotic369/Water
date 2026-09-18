@@ -118,6 +118,14 @@
         button:active {
             transform: scale(0.96);
         }
+
+        #calibrating-text {
+            display: none;
+            color: #00d4ff;
+            font-size: 13px;
+            margin-top: 12px;
+            letter-spacing: 0.5px;
+        }
     </style>
 </head>
 <body>
@@ -126,6 +134,7 @@
         <h2>Ocean Horizon & Motion</h2>
         <p>Tilt and shake your device to experience physical fluid dynamics.</p>
         <button id="start-btn">Calibrate & Start</button>
+        <div id="calibrating-text">Hold still… calibrating horizon</div>
     </div>
 
     <div class="widget-box">
@@ -141,6 +150,7 @@
         const ctx = canvas.getContext('2d');
         const permissionUI = document.getElementById('permission-ui');
         const startBtn = document.getElementById('start-btn');
+        const calibratingText = document.getElementById('calibrating-text');
         const compassNeedle = document.getElementById('compass-needle');
         const headingText = document.getElementById('heading-text');
 
@@ -158,13 +168,16 @@
             nodes.push({
                 y: 0,
                 targetY: 0,
-                velocity: 0
+                velocity: 0,
+                foam: 0 // Foam intensity for whitecap rendering
             });
         }
 
         const SPRING_K = 0.035;       // Water surface tension
         const DAMPING = 0.04;         // Wave decay speed
         const SPREAD = 0.22;          // Wave transmission across nodes
+        const FOAM_VELOCITY_THRESHOLD = 2.2; // Velocity above which whitecaps form
+        const FOAM_DECAY = 0.92;      // How fast foam fades per frame
 
         // State & Interpolation Targets
         let targetTilt = 0;           // Gravity roll target (radians)
@@ -175,6 +188,15 @@
         let targetHeading = 0;        // Compass direction (radians)
         let currentHeading = 0;
 
+        // Calibration: the device's "neutral" resting beta angle, captured on Calibrate & Start
+        let betaZero = 0.78;
+        let calibrated = false;
+
+        // Rolling buffer for shake detection so a real shake reads as sustained motion
+        // rather than a single noisy frame
+        const SHAKE_BUFFER_SIZE = 4;
+        const shakeBuffer = new Array(SHAKE_BUFFER_SIZE).fill(0);
+        let shakeBufferIdx = 0;
         let lastShake = { x: 0, y: 0, z: 0 };
 
         // Ship Object State
@@ -194,14 +216,31 @@
         }
 
         // --- Sensor Event Listeners ---
+        let calibrationSamples = [];
+        let calibrationFrames = 0;
+
         function onOrientation(e) {
             let gamma = (e.gamma || 0) * (Math.PI / 180); // Roll
             let beta = (e.beta || 0) * (Math.PI / 180);   // Pitch
             let alpha = (e.alpha || 0) * (Math.PI / 180); // Compass
 
+            // During the brief calibration window, capture resting beta as the zero-point
+            // instead of relying on the old hardcoded 0.78 constant
+            if (!calibrated) {
+                calibrationSamples.push(beta);
+                calibrationFrames++;
+                if (calibrationFrames >= 15) {
+                    betaZero = calibrationSamples.reduce((a, b) => a + b, 0) / calibrationSamples.length;
+                    calibrated = true;
+                    calibratingText.style.display = 'none';
+                    permissionUI.style.display = 'none';
+                }
+                return;
+            }
+
             // Device horizon angle relative to ground gravity
-            targetTilt = -Math.sin(gamma); 
-            targetPitch = Math.max(-0.5, Math.min(0.5, (beta - 0.78) * 0.5));
+            targetTilt = -Math.sin(gamma);
+            targetPitch = Math.max(-0.5, Math.min(0.5, (beta - betaZero) * 0.5));
 
             // Accurate Compass Heading (iOS support included)
             if (e.webkitCompassHeading !== undefined) {
@@ -212,14 +251,14 @@
         }
 
         function onMotion(e) {
-                    let acc = e.acceleration;
-                    // Some devices provide null for acceleration but populate accelerationIncludingGravity
-                    if (!acc || acc.x == null) {
-                        acc = e.accelerationIncludingGravity;
-                    }
-                    if (!acc || acc.x == null) return;
+            let acc = e.acceleration;
+            // Some devices provide null for acceleration but populate accelerationIncludingGravity
+            if (!acc || acc.x == null) {
+                acc = e.accelerationIncludingGravity;
+            }
+            if (!acc || acc.x == null) return;
 
-                    // Compute sudden jerk/acceleration delta
+            // Compute sudden jerk/acceleration delta
             const dx = acc.x - lastShake.x;
             const dy = acc.y - lastShake.y;
             const dz = acc.z - lastShake.z;
@@ -228,10 +267,16 @@
 
             const jerk = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-            // If a shake or jerk is detected, inject physical impulse into liquid
-            if (jerk > 3.0) {
-                const splashForce = Math.min(jerk * 1.8, 45);
-                
+            // Push into rolling buffer and use the buffer's average to judge a real shake,
+            // filtering out single-frame sensor noise
+            shakeBuffer[shakeBufferIdx] = jerk;
+            shakeBufferIdx = (shakeBufferIdx + 1) % SHAKE_BUFFER_SIZE;
+            const avgJerk = shakeBuffer.reduce((a, b) => a + b, 0) / SHAKE_BUFFER_SIZE;
+
+            // If a sustained shake or jerk is detected, inject physical impulse into liquid
+            if (avgJerk > 2.4) {
+                const splashForce = Math.min(avgJerk * 2.0, 55);
+
                 // Direction of shake determines slosh side
                 if (dx > 0) {
                     nodes[0].velocity += splashForce * 0.8;
@@ -243,6 +288,13 @@
 
                 // Random chop in the middle
                 nodes[Math.floor(NODE_COUNT / 2)].velocity += (Math.random() - 0.5) * splashForce;
+
+                // Vertical jolt (dz) rocks the whole surface up/down slightly for extra realism
+                if (Math.abs(dz) > 1.5) {
+                    for (let i = 0; i < NODE_COUNT; i++) {
+                        nodes[i].velocity += (dz > 0 ? 1 : -1) * Math.min(Math.abs(dz) * 0.6, 8);
+                    }
+                }
             }
         }
 
@@ -252,9 +304,16 @@
         function updatePhysics() {
             clock += 0.04;
 
-            // Ultra-smooth interpolation (Filters out sensor micro-jitters)
-            currentTilt += (targetTilt - currentTilt) * 0.08;
-            currentPitch += (targetPitch - currentPitch) * 0.08;
+            // Variable-speed interpolation: bigger sudden changes in tilt/pitch move faster,
+            // so a quick device flip feels responsive instead of sluggishly damped
+            const tiltDelta = Math.abs(targetTilt - currentTilt);
+            const tiltSpeed = Math.min(0.08 + tiltDelta * 0.25, 0.35);
+            currentTilt += (targetTilt - currentTilt) * tiltSpeed;
+
+            const pitchDelta = Math.abs(targetPitch - currentPitch);
+            const pitchSpeed = Math.min(0.08 + pitchDelta * 0.25, 0.35);
+            currentPitch += (targetPitch - currentPitch) * pitchSpeed;
+
             currentHeading = lerpAngle(currentHeading, targetHeading, 0.07);
 
             // Water surface baseline tilt
@@ -270,6 +329,13 @@
                 const force = -SPRING_K * diff - DAMPING * nodes[i].velocity;
                 nodes[i].velocity += force;
                 nodes[i].y += nodes[i].velocity;
+
+                // Foam builds up when local velocity exceeds threshold, decays otherwise
+                if (Math.abs(nodes[i].velocity) > FOAM_VELOCITY_THRESHOLD) {
+                    nodes[i].foam = Math.min(1, nodes[i].foam + (Math.abs(nodes[i].velocity) - FOAM_VELOCITY_THRESHOLD) * 0.15);
+                } else {
+                    nodes[i].foam *= FOAM_DECAY;
+                }
             }
 
             // Propagate wave velocity to neighboring points
@@ -384,6 +450,24 @@
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
             ctx.lineWidth = 2;
             ctx.stroke();
+
+            // 5. Foam / whitecaps on high-velocity nodes, layered on top of the crest line
+            for (let i = 0; i < NODE_COUNT; i++) {
+                if (nodes[i].foam > 0.05) {
+                    const foamAlpha = Math.min(nodes[i].foam, 0.9);
+                    const foamRadius = 3 + nodes[i].foam * 5;
+                    ctx.beginPath();
+                    ctx.arc(i * dx, nodes[i].y, foamRadius, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255, 255, 255, ${foamAlpha})`;
+                    ctx.fill();
+
+                    // A couple of smaller scattered foam flecks for texture
+                    ctx.beginPath();
+                    ctx.arc(i * dx + foamRadius * 0.8, nodes[i].y - 2, foamRadius * 0.4, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255, 255, 255, ${foamAlpha * 0.7})`;
+                    ctx.fill();
+                }
+            }
         }
 
         function loop() {
@@ -394,6 +478,9 @@
 
         // --- Permissions Setup ---
         startBtn.addEventListener('click', async () => {
+            calibratingText.style.display = 'block';
+            startBtn.style.display = 'none';
+
             // iOS Permission Request
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 try {
@@ -405,24 +492,41 @@
                     if (orientPerm === 'granted' && motionPerm === 'granted') {
                         window.addEventListener('deviceorientation', onOrientation);
                         window.addEventListener('devicemotion', onMotion);
+                    } else {
+                        // Permission denied: fall back so the UI doesn't stay stuck on calibration
+                        calibrated = true;
+                        calibratingText.style.display = 'none';
+                        permissionUI.style.display = 'none';
                     }
                 } catch (err) {
                     console.error(err);
+                    calibrated = true;
+                    calibratingText.style.display = 'none';
+                    permissionUI.style.display = 'none';
                 }
             } else {
-                            // Android & Standard Browsers
-                            // Android often needs absolute orientation for compass/gravity to behave correctly
-                            window.addEventListener('deviceorientationabsolute', onOrientation);
-                            window.addEventListener('deviceorientation', onOrientation);
-                            window.addEventListener('devicemotion', onMotion);
-                        }
+                // Android & Standard Browsers
+                // Android often needs absolute orientation for compass/gravity to behave correctly
+                window.addEventListener('deviceorientationabsolute', onOrientation);
+                window.addEventListener('deviceorientation', onOrientation);
+                window.addEventListener('devicemotion', onMotion);
+            }
 
-                        permissionUI.style.display = 'none';
+            // Safety fallback: if no orientation events arrive (desktop, unsupported browser),
+            // don't leave the user stuck on the calibration screen forever
+            setTimeout(() => {
+                if (!calibrated) {
+                    calibrated = true;
+                    calibratingText.style.display = 'none';
+                    permissionUI.style.display = 'none';
+                }
+            }, 2000);
         });
 
         // Desktop Fallback (Drag or move mouse to test tilting)
         window.addEventListener('mousemove', (e) => {
             if (permissionUI.style.display !== 'none') permissionUI.style.display = 'none';
+            calibrated = true;
             const normX = (e.clientX / window.innerWidth) - 0.5;
             targetTilt = normX * 0.8;
             targetHeading = normX * Math.PI;
