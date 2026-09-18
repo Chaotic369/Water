@@ -126,6 +126,25 @@
             margin-top: 12px;
             letter-spacing: 0.5px;
         }
+
+        /* Debug readout: shows raw sensor values on-screen so we can see what's arriving
+           without needing DevTools */
+        #debug-panel {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.75);
+            color: #0f0;
+            font-family: monospace;
+            font-size: 11px;
+            line-height: 1.5;
+            padding: 8px 10px;
+            border-radius: 8px;
+            z-index: 200;
+            white-space: pre-wrap;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -145,6 +164,8 @@
         <canvas id="ocean-canvas"></canvas>
     </div>
 
+    <div id="debug-panel">Waiting for sensor events…</div>
+
     <script>
         const canvas = document.getElementById('ocean-canvas');
         const ctx = canvas.getContext('2d');
@@ -153,6 +174,12 @@
         const calibratingText = document.getElementById('calibrating-text');
         const compassNeedle = document.getElementById('compass-needle');
         const headingText = document.getElementById('heading-text');
+        const debugPanel = document.getElementById('debug-panel');
+        let lastOrientationEventTime = 0;
+        let lastMotionEventTime = 0;
+        let orientationEventCount = 0;
+        let motionEventCount = 0;
+        let usingAbsoluteGlobal = false;
 
         // High DPI Display Configuration
         const WIDGET_SIZE = 320;
@@ -220,14 +247,30 @@
         let calibrationFrames = 0;
 
         function onOrientation(e) {
+            orientationEventCount++;
+            lastOrientationEventTime = Date.now();
+
             // Some devices briefly report null gamma/beta right after permission is granted,
             // before the sensor warms up. Treating null as 0 snaps tilt to dead-center;
             // instead, just skip that frame and wait for a real reading.
-            if (e.gamma == null || e.beta == null) return;
+            if (e.gamma == null || e.beta == null) {
+                debugPanel.textContent =
+                    `orientation events: ${orientationEventCount} (absolute: ${usingAbsoluteGlobal})\n` +
+                    `gamma: null  beta: null  alpha: ${e.alpha}\n` +
+                    `>> SKIPPING this frame (null gamma/beta)\n` +
+                    `motion events: ${motionEventCount}`;
+                return;
+            }
 
             let gamma = e.gamma * (Math.PI / 180); // Roll
             let beta = e.beta * (Math.PI / 180);   // Pitch
             let alpha = (e.alpha || 0) * (Math.PI / 180); // Compass
+
+            debugPanel.textContent =
+                `orientation events: ${orientationEventCount} (absolute: ${usingAbsoluteGlobal})\n` +
+                `gamma: ${e.gamma.toFixed(1)}  beta: ${e.beta.toFixed(1)}  alpha: ${(e.alpha || 0).toFixed(1)}\n` +
+                `calibrated: ${calibrated}  targetTilt: ${targetTilt.toFixed(2)}  targetPitch: ${targetPitch.toFixed(2)}\n` +
+                `motion events: ${motionEventCount}`;
 
             // During the brief calibration window, capture resting beta as the zero-point
             // instead of relying on the old hardcoded 0.78 constant
@@ -256,6 +299,8 @@
         }
 
         function onMotion(e) {
+            motionEventCount++;
+            lastMotionEventTime = Date.now();
             let acc = e.acceleration;
             // Some devices provide null for acceleration but populate accelerationIncludingGravity
             if (!acc || acc.x == null) {
@@ -520,6 +565,7 @@
 
                 function absoluteHandler(e) {
                     usingAbsolute = true;
+                    usingAbsoluteGlobal = true;
                     onOrientation(e);
                 }
                 window.addEventListener('deviceorientationabsolute', absoluteHandler);
@@ -560,6 +606,14 @@
         });
 
         loop();
+
+        // Watchdog: if the page never receives a single orientation or motion event,
+        // say so plainly instead of leaving a blank/frozen debug panel
+        setInterval(() => {
+            if (orientationEventCount === 0 && motionEventCount === 0) {
+                debugPanel.textContent = 'NO sensor events received at all.\nThis usually means the browser/OS is blocking motion sensors on this page,\nor this device does not expose deviceorientation/devicemotion.';
+            }
+        }, 3000);
     </script>
 </body>
 </html>
