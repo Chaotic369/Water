@@ -174,7 +174,27 @@
                         const debugPanel = document.getElementById('debug-panel');
 
                                         let isNight = true;
-                const stars = [];
+                                                        // Drifting clouds (shared by day and night; each is a cluster of soft puffs)
+                                                        const clouds = [];
+                                                        for (let i = 0; i < 6; i++) {
+                                                            const puffs = [];
+                                                            const puffCount = 4 + Math.floor(Math.random() * 3);
+                                                            for (let p = 0; p < puffCount; p++) {
+                                                                puffs.push({
+                                                                    ox: (p - (puffCount - 1) / 2) * (9 + Math.random() * 4),
+                                                                    oy: (Math.random() - 0.5) * 5,
+                                                                    r: 8 + Math.random() * 7
+                                                                });
+                                                            }
+                                                            clouds.push({
+                                                                x: Math.random() * 480 - 40,
+                                                                y: 18 + Math.random() * 62,
+                                                                speed: 0.05 + Math.random() * 0.11,
+                                                                scale: 0.7 + Math.random() * 0.7,
+                                                                puffs: puffs
+                                                            });
+                                                        }
+                                                        const stars = [];
                 for (let i = 0; i < 35; i++) {
                     stars.push({
                         x: Math.random() * 400,
@@ -506,7 +526,32 @@
                                                                         ctx.fill();
                                                                     }
 
-                                                                    // Horizon haze band (atmospheric perspective where sea meets sky)
+                                                                    // Clouds drifting across the sky (behind the ship and water)
+                                                                                                                                        for (const c of clouds) {
+                                                                                                                                            c.x += c.speed;
+                                                                                                                                            if (c.x > W_WIDTH + 80) c.x = -80;
+                                                                                                                                            for (const pf of c.puffs) {
+                                                                                                                                                const px = c.x + pf.ox * c.scale;
+                                                                                                                                                const py = c.y + pf.oy * c.scale;
+                                                                                                                                                const pr = pf.r * c.scale;
+                                                                                                                                                const cg = ctx.createRadialGradient(px - pr * 0.25, py - pr * 0.3, pr * 0.1, px, py, pr);
+                                                                                                                                                if (isNight) {
+                                                                                                                                                    cg.addColorStop(0, 'rgba(70, 92, 122, 0.5)');
+                                                                                                                                                    cg.addColorStop(0.6, 'rgba(38, 56, 84, 0.34)');
+                                                                                                                                                    cg.addColorStop(1, 'rgba(24, 40, 66, 0)');
+                                                                                                                                                } else {
+                                                                                                                                                    cg.addColorStop(0, 'rgba(255, 255, 255, 0.92)');
+                                                                                                                                                    cg.addColorStop(0.6, 'rgba(238, 246, 252, 0.6)');
+                                                                                                                                                    cg.addColorStop(1, 'rgba(215, 232, 245, 0)');
+                                                                                                                                                }
+                                                                                                                                                ctx.fillStyle = cg;
+                                                                                                                                                ctx.beginPath();
+                                                                                                                                                ctx.arc(px, py, pr, 0, Math.PI * 2);
+                                                                                                                                                ctx.fill();
+                                                                                                                                            }
+                                                                                                                                        }
+
+                                                                                                                                        // Horizon haze band (atmospheric perspective where sea meets sky)
                                                                                                                                         const hazeY = W_HEIGHT * 0.52 + currentPitch * 40;
                                                                                                                                         const hazeGrad = ctx.createLinearGradient(0, hazeY - 34, 0, hazeY + 10);
                                                                                                                                         hazeGrad.addColorStop(0, isNight ? 'rgba(40, 70, 110, 0)' : 'rgba(235, 245, 250, 0)');
