@@ -6,10 +6,11 @@
     <title>Realistic Ocean & Compass Physics</title>
     <style>
         * {
-            box-sizing: border-box;
-            user-select: none;
-            -webkit-user-select: none;
-        }
+                    box-sizing: border-box;
+                    user-select: none;
+                    -webkit-user-select: none;
+                    -webkit-tap-highlight-color: transparent;
+                }
 
         body {
                     margin: 0;
@@ -485,21 +486,32 @@
                                     ctx.stroke();
 
                                     // 5. Foam / whitecaps on high-velocity nodes
-                                    for (let i = 0; i < NODE_COUNT; i++) {
-                                        if (nodes[i].foam > 0.05) {
-                                            const foamAlpha = Math.min(nodes[i].foam, 0.9);
-                                            const foamRadius = 3 + nodes[i].foam * 5;
-                                            ctx.beginPath();
-                                            ctx.arc(i * dx, nodes[i].y, foamRadius, 0, Math.PI * 2);
-                                            ctx.fillStyle = `rgba(255, 255, 255, ${foamAlpha})`;
-                                            ctx.fill();
+                                    ctx.lineCap = 'round';
+                                                        for (let i = 0; i < NODE_COUNT; i++) {
+                                                            if (nodes[i].foam > 0.05) {
+                                                                const foamAlpha = Math.min(nodes[i].foam, 0.9);
+                                                                const splashHeight = nodes[i].foam * 8;
+                                                                const spread = dx * 0.7;
+                            
+                                                                // 5. Stylized Foam / Whitecaps (Organic frothy crests instead of circles)
+                                                                ctx.strokeStyle = `rgba(255, 255, 255, ${foamAlpha})`;
+                                                                ctx.lineWidth = 2 + nodes[i].foam * 2.5;
+                                                                ctx.beginPath();
+                                                                ctx.moveTo(i * dx - spread, nodes[i].y - splashHeight * 0.15);
+                                                                ctx.lineTo(i * dx + spread, nodes[i].y - splashHeight * 0.15);
+                                                                ctx.stroke();
 
-                                            ctx.beginPath();
-                                            ctx.arc(i * dx + foamRadius * 0.8, nodes[i].y - 2, foamRadius * 0.4, 0, Math.PI * 2);
-                                            ctx.fillStyle = `rgba(255, 255, 255, ${foamAlpha * 0.7})`;
-                                            ctx.fill();
-                                        }
-                                    }
+                                                                // Scattered droplets for high impacts (like tapping the screen)
+                                                                if (nodes[i].foam > 0.3) {
+                                                                    ctx.beginPath();
+                                                                    const dropX = i * dx + ((i % 3) - 1) * 6;
+                                                                    const dropY = nodes[i].y - splashHeight - 5;
+                                                                    ctx.arc(dropX, dropY, nodes[i].foam * 1.8, 0, Math.PI * 2);
+                                                                    ctx.fillStyle = `rgba(255, 255, 255, ${foamAlpha * 0.8})`;
+                                                                    ctx.fill();
+                                                                }
+                                                            }
+                                                        }
                                 }
 
                                 function loop() {
