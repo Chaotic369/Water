@@ -142,12 +142,8 @@
     </div>
 
     <div class="widget-box">
-        <div class="compass-indicator">
-            <span class="compass-needle" id="compass-needle">▲</span>
-            <span id="heading-text">0° N</span>
+            <canvas id="ocean-canvas"></canvas>
         </div>
-        <canvas id="ocean-canvas"></canvas>
-    </div>
 
     <div id="debug-panel">Waiting for sensor events…</div>
 
@@ -157,9 +153,7 @@
         const permissionUI = document.getElementById('permission-ui');
         const startBtn = document.getElementById('start-btn');
         const calibratingText = document.getElementById('calibrating-text');
-        const compassNeedle = document.getElementById('compass-needle');
-        const headingText = document.getElementById('heading-text');
-        const debugPanel = document.getElementById('debug-panel');
+                const debugPanel = document.getElementById('debug-panel');
         let lastOrientationEventTime = 0;
         let lastMotionEventTime = 0;
         let orientationEventCount = 0;
@@ -369,14 +363,8 @@
                                                         ship.y += ((waterHeightAtShip + bobbing) - ship.y) * 0.15;
                     
                                                         const targetRot = Math.atan(waterSlope) + (currentTilt * 0.2); // Lean into the tilt
-                                                        ship.rot += (targetRot - ship.rot) * 0.12;
-
-                                                        const degrees = Math.round((currentHeading * 180 / Math.PI) % 360);
-                                    if (compassNeedle) {
-                                        compassNeedle.style.transform = `rotate(${currentHeading}rad)`;
-                                        headingText.textContent = `${degrees}° N`;
-                                    }
-                                }
+                                                                                                                ship.rot += (targetRot - ship.rot) * 0.12;
+                                                                                        }
 
                                 function draw() {
                                     ctx.clearRect(0, 0, W_WIDTH, W_HEIGHT);
