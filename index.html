@@ -25,85 +25,36 @@
                     overflow: hidden;
                 }
 
-        /* Bottle Container (Replaces standard widget) */
+        /* Rectangular Widget Container */
                 .widget-box {
                     position: relative;
-                    width: 480px;
-                    height: 200px;
-                    border-radius: 90px 40px 40px 90px; /* Asymmetric bottle shape */
-                    overflow: visible; /* Allows cork to break out */
+                    width: 400px;
+                    height: 260px;
+                    border-radius: 24px;
+                    overflow: hidden;
                     box-shadow: 
                         0 30px 60px -10px rgba(0, 0, 0, 0.8),
                         inset 0 0 20px rgba(255, 255, 255, 0.4),
-                        inset 10px 20px 40px rgba(255, 255, 255, 0.5),
-                        inset -10px -20px 40px rgba(0, 0, 0, 0.5);
+                        inset 0 2px 10px rgba(255, 255, 255, 0.5);
                     background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 100%);
                     border: 2px solid rgba(255, 255, 255, 0.3);
-                    backdrop-filter: blur(3px);
-                    -webkit-backdrop-filter: blur(3px);
-                    /* Scale down slightly on small phones */
+                    backdrop-filter: blur(8px);
+                    -webkit-backdrop-filter: blur(8px);
                     max-width: 90vw;
                     transform-origin: center;
                 }
 
                 @media (max-width: 550px) {
                     .widget-box {
-                        transform: scale(0.70);
+                        transform: scale(0.9);
                     }
-                }
-
-                /* Glass Bottle Neck */
-                .widget-box::after {
-                    content: '';
-                    position: absolute;
-                    right: -60px;
-                    top: 55px;
-                    width: 60px;
-                    height: 90px;
-                    border-radius: 0 15px 15px 0;
-                    background: linear-gradient(to bottom, 
-                        rgba(255,255,255,0.4) 0%, 
-                        rgba(255,255,255,0.1) 20%, 
-                        rgba(255,255,255,0.1) 80%, 
-                        rgba(255,255,255,0.4) 100%);
-                    box-shadow: 
-                        inset -10px 0 20px rgba(0,0,0,0.4),
-                        inset 5px 0 15px rgba(255,255,255,0.6);
-                    border: 2px solid rgba(255,255,255,0.3);
-                    border-left: none;
-                    pointer-events: none;
-                }
-
-                /* The Cork */
-                .widget-box::before {
-                    content: '';
-                    position: absolute;
-                    right: -95px;
-                    top: 60px;
-                    width: 40px;
-                    height: 80px;
-                    border-radius: 5px 10px 10px 5px;
-                    /* Synthetic cork texture */
-                    background: url('data:image/svg+xml;utf8,<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(%23n)" opacity="0.5"/></svg>'), #8b5a2b;
-                    box-shadow: 
-                        inset -10px 0 15px rgba(0,0,0,0.7),
-                        inset 0 10px 10px rgba(0,0,0,0.4),
-                        2px 5px 10px rgba(0,0,0,0.5);
-                    border: 2px solid #4a2e12;
-                    border-left: none;
-                    z-index: -1;
-                }
-
-                /* Hide the compass UI to preserve the cinematic bottle illusion */
-                .compass-indicator {
-                    display: none;
                 }
 
                 canvas {
                     display: block;
                     width: 100%;
                     height: 100%;
-                    border-radius: 90px 40px 40px 90px; /* Clips the water exactly to the bottle interior */
+                    border-radius: 24px;
                 }
 
         /* Permission UI */
@@ -215,15 +166,15 @@
         let usingAbsoluteGlobal = false;
 
         // High DPI Display Configuration
-                const W_WIDTH = 480;
-                const W_HEIGHT = 200;
-                const dpr = window.devicePixelRatio || 1;
-                canvas.width = W_WIDTH * dpr;
-                canvas.height = W_HEIGHT * dpr;
-                ctx.scale(dpr, dpr);
+                        const W_WIDTH = 400;
+                        const W_HEIGHT = 260;
+                        const dpr = window.devicePixelRatio || 1;
+                        canvas.width = W_WIDTH * dpr;
+                        canvas.height = W_HEIGHT * dpr;
+                        ctx.scale(dpr, dpr);
 
-                // --- Physics Engine & Waves ---
-                const NODE_COUNT = 45; // Increased nodes for wider aspect ratio
+                        // --- Physics Engine & Waves ---
+                        const NODE_COUNT = 40;
         const nodes = [];
         for (let i = 0; i < NODE_COUNT; i++) {
             nodes.push({
@@ -261,12 +212,13 @@
         let lastShake = { x: 0, y: 0, z: 0 };
 
         // Ship Object State
-                const ship = {
-                    x: W_WIDTH / 2,
-                    y: W_HEIGHT / 2,
-                    rot: 0,
-                    vy: 0
-                };
+                        const ship = {
+                            x: W_WIDTH / 2,
+                            y: W_HEIGHT / 2,
+                            rot: 0,
+                            vy: 0,
+                            sway: 0
+                        };
 
         // Shortest-distance angle interpolation to prevent 360° spin flips
                 function lerpAngle(current, target, factor) {
@@ -400,15 +352,25 @@
                                         }
                                     }
 
-                                    const centerIdx = Math.floor(NODE_COUNT / 2);
-                                    const waterHeightAtShip = nodes[centerIdx].y;
-                                    const waterSlope = (nodes[centerIdx + 2].y - nodes[centerIdx - 2].y) / (4 * (W_WIDTH / NODE_COUNT));
+                                    // Ship horizontal motion (drifting with tilt and time)
+                                                        ship.sway = Math.sin(clock * 0.6) * 20 + (currentTilt * 50);
+                                                        ship.x = (W_WIDTH / 2) + ship.sway;
+                    
+                                                        if (ship.x < 50) ship.x = 50;
+                                                        if (ship.x > W_WIDTH - 50) ship.x = W_WIDTH - 50;
 
-                                    ship.y += (waterHeightAtShip - ship.y) * 0.15;
-                                    const targetRot = Math.atan(waterSlope);
-                                    ship.rot += (targetRot - ship.rot) * 0.12;
+                                                        const shipNode = Math.max(2, Math.min(NODE_COUNT - 3, Math.floor((ship.x / W_WIDTH) * NODE_COUNT)));
+                                                        const waterHeightAtShip = nodes[shipNode].y;
+                                                        const waterSlope = (nodes[shipNode + 1].y - nodes[shipNode - 1].y) / (2 * (W_WIDTH / NODE_COUNT));
 
-                                    const degrees = Math.round((currentHeading * 180 / Math.PI) % 360);
+                                                        // Add a bobbing motion to the Y axis
+                                                        const bobbing = Math.sin(clock * 2.5) * 2;
+                                                        ship.y += ((waterHeightAtShip + bobbing) - ship.y) * 0.15;
+                    
+                                                        const targetRot = Math.atan(waterSlope) + (currentTilt * 0.2); // Lean into the tilt
+                                                        ship.rot += (targetRot - ship.rot) * 0.12;
+
+                                                        const degrees = Math.round((currentHeading * 180 / Math.PI) % 360);
                                     if (compassNeedle) {
                                         compassNeedle.style.transform = `rotate(${currentHeading}rad)`;
                                         headingText.textContent = `${degrees}° N`;
@@ -465,25 +427,29 @@
                                     ctx.stroke();
 
                                     // Sails (Tattered, translucent grey)
-                                    ctx.fillStyle = 'rgba(230, 240, 245, 0.85)';
+                                                        ctx.fillStyle = 'rgba(230, 240, 245, 0.85)';
                     
-                                    // Back (Mizzen) sails
-                                    ctx.beginPath();
-                                    ctx.moveTo(-25, -45); ctx.quadraticCurveTo(-10, -35, -25, -25);
-                                    ctx.moveTo(-25, -25); ctx.quadraticCurveTo(-10, -15, -25, -5);
-                                    ctx.fill();
+                                                        // Animate the sails billowing (wind effect)
+                                                        const billow = Math.sin(clock * 1.5) * 6 + 18;
+                                                        const backBillow = billow * 0.6;
+                    
+                                                        // Back (Mizzen) sails
+                                                        ctx.beginPath();
+                                                        ctx.moveTo(-25, -45); ctx.quadraticCurveTo(-25 + backBillow, -35, -25, -25);
+                                                        ctx.moveTo(-25, -25); ctx.quadraticCurveTo(-25 + backBillow, -15, -25, -5);
+                                                        ctx.fill();
 
-                                    // Main sails
-                                    ctx.beginPath();
-                                    ctx.moveTo(0, -65); ctx.quadraticCurveTo(20, -50, 0, -35);
-                                    ctx.moveTo(0, -35); ctx.quadraticCurveTo(25, -20, 0, -5);
-                                    ctx.fill();
+                                                        // Main sails
+                                                        ctx.beginPath();
+                                                        ctx.moveTo(0, -65); ctx.quadraticCurveTo(0 + billow, -50, 0, -35);
+                                                        ctx.moveTo(0, -35); ctx.quadraticCurveTo(0 + billow + 5, -20, 0, -5);
+                                                        ctx.fill();
 
-                                    // Front (Foremast) sails
-                                    ctx.beginPath();
-                                    ctx.moveTo(25, -45); ctx.quadraticCurveTo(40, -30, 25, -15);
-                                    ctx.moveTo(25, -15); ctx.quadraticCurveTo(40, -5, 25, 0);
-                                    ctx.fill();
+                                                        // Front (Foremast) sails
+                                                        ctx.beginPath();
+                                                        ctx.moveTo(25, -45); ctx.quadraticCurveTo(25 + billow * 0.8, -30, 25, -15);
+                                                        ctx.moveTo(25, -15); ctx.quadraticCurveTo(25 + billow * 0.8, -5, 25, 0);
+                                                        ctx.fill();
 
                                     // Pirate Flag (Jolly Roger silhouette)
                                     ctx.fillStyle = '#000';
