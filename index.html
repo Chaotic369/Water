@@ -352,163 +352,195 @@
                 }
 
                 // --- Animation & Physics Loop ---
-                let clock = 0;
+                                let clock = 0;
 
-                function updatePhysics() {
-                    clock += 0.04;
+                                function updatePhysics() {
+                                    clock += 0.04;
 
-                    const tiltDelta = Math.abs(targetTilt - currentTilt);
-                    const tiltSpeed = Math.min(0.08 + tiltDelta * 0.25, 0.35);
-                    currentTilt += (targetTilt - currentTilt) * tiltSpeed;
+                                    const tiltDelta = Math.abs(targetTilt - currentTilt);
+                                    const tiltSpeed = Math.min(0.08 + tiltDelta * 0.25, 0.35);
+                                    currentTilt += (targetTilt - currentTilt) * tiltSpeed;
 
-                    const pitchDelta = Math.abs(targetPitch - currentPitch);
-                    const pitchSpeed = Math.min(0.08 + pitchDelta * 0.25, 0.35);
-                    currentPitch += (targetPitch - currentPitch) * pitchSpeed;
+                                    const pitchDelta = Math.abs(targetPitch - currentPitch);
+                                    const pitchSpeed = Math.min(0.08 + pitchDelta * 0.25, 0.35);
+                                    currentPitch += (targetPitch - currentPitch) * pitchSpeed;
 
-                    currentHeading = lerpAngle(currentHeading, targetHeading, 0.07);
+                                    currentHeading = lerpAngle(currentHeading, targetHeading, 0.07);
 
-                    const baselineCenter = (WIDGET_SIZE * 0.52) + (currentPitch * 40);
-                    const maxTiltDrop = (WIDGET_SIZE * 0.45) * currentTilt;
+                                    const baselineCenter = (W_HEIGHT * 0.52) + (currentPitch * 40);
+                                    const maxTiltDrop = (W_HEIGHT * 0.45) * currentTilt;
 
-                    for (let i = 0; i < NODE_COUNT; i++) {
-                        const ratio = (i / (NODE_COUNT - 1)) - 0.5;
-                        nodes[i].targetY = baselineCenter + (ratio * maxTiltDrop * 2);
+                                    for (let i = 0; i < NODE_COUNT; i++) {
+                                        const ratio = (i / (NODE_COUNT - 1)) - 0.5;
+                                        nodes[i].targetY = baselineCenter + (ratio * maxTiltDrop * 2);
 
-                        const diff = nodes[i].y - nodes[i].targetY;
-                        const force = -SPRING_K * diff - DAMPING * nodes[i].velocity;
-                        nodes[i].velocity += force;
-                        nodes[i].y += nodes[i].velocity;
+                                        const diff = nodes[i].y - nodes[i].targetY;
+                                        const force = -SPRING_K * diff - DAMPING * nodes[i].velocity;
+                                        nodes[i].velocity += force;
+                                        nodes[i].y += nodes[i].velocity;
 
-                        if (Math.abs(nodes[i].velocity) > FOAM_VELOCITY_THRESHOLD) {
-                            nodes[i].foam = Math.min(1, nodes[i].foam + (Math.abs(nodes[i].velocity) - FOAM_VELOCITY_THRESHOLD) * 0.15);
-                        } else {
-                            nodes[i].foam *= FOAM_DECAY;
-                        }
-                    }
+                                        if (Math.abs(nodes[i].velocity) > FOAM_VELOCITY_THRESHOLD) {
+                                            nodes[i].foam = Math.min(1, nodes[i].foam + (Math.abs(nodes[i].velocity) - FOAM_VELOCITY_THRESHOLD) * 0.15);
+                                        } else {
+                                            nodes[i].foam *= FOAM_DECAY;
+                                        }
+                                    }
 
-                    const leftPass = [];
-                    const rightPass = [];
+                                    const leftPass = [];
+                                    const rightPass = [];
 
-                    for (let i = 0; i < NODE_COUNT; i++) {
-                        if (i > 0) {
-                            leftPass[i] = SPREAD * (nodes[i].y - nodes[i - 1].y);
-                            nodes[i - 1].velocity += leftPass[i];
-                        }
-                        if (i < NODE_COUNT - 1) {
-                            rightPass[i] = SPREAD * (nodes[i].y - nodes[i + 1].y);
-                            nodes[i + 1].velocity += rightPass[i];
-                        }
-                    }
+                                    for (let i = 0; i < NODE_COUNT; i++) {
+                                        if (i > 0) {
+                                            leftPass[i] = SPREAD * (nodes[i].y - nodes[i - 1].y);
+                                            nodes[i - 1].velocity += leftPass[i];
+                                        }
+                                        if (i < NODE_COUNT - 1) {
+                                            rightPass[i] = SPREAD * (nodes[i].y - nodes[i + 1].y);
+                                            nodes[i + 1].velocity += rightPass[i];
+                                        }
+                                    }
 
-                    const centerIdx = Math.floor(NODE_COUNT / 2);
-                    const waterHeightAtShip = nodes[centerIdx].y;
-                    const waterSlope = (nodes[centerIdx + 2].y - nodes[centerIdx - 2].y) / (4 * (WIDGET_SIZE / NODE_COUNT));
+                                    const centerIdx = Math.floor(NODE_COUNT / 2);
+                                    const waterHeightAtShip = nodes[centerIdx].y;
+                                    const waterSlope = (nodes[centerIdx + 2].y - nodes[centerIdx - 2].y) / (4 * (W_WIDTH / NODE_COUNT));
 
-                    ship.y += (waterHeightAtShip - ship.y) * 0.15;
-                    const targetRot = Math.atan(waterSlope);
-                    ship.rot += (targetRot - ship.rot) * 0.12;
+                                    ship.y += (waterHeightAtShip - ship.y) * 0.15;
+                                    const targetRot = Math.atan(waterSlope);
+                                    ship.rot += (targetRot - ship.rot) * 0.12;
 
-                    const degrees = Math.round((currentHeading * 180 / Math.PI) % 360);
-                    compassNeedle.style.transform = `rotate(${currentHeading}rad)`;
-                    headingText.textContent = `${degrees}° N`;
-                }
+                                    const degrees = Math.round((currentHeading * 180 / Math.PI) % 360);
+                                    if (compassNeedle) {
+                                        compassNeedle.style.transform = `rotate(${currentHeading}rad)`;
+                                        headingText.textContent = `${degrees}° N`;
+                                    }
+                                }
 
-                function draw() {
-                    ctx.clearRect(0, 0, WIDGET_SIZE, WIDGET_SIZE);
+                                function draw() {
+                                    ctx.clearRect(0, 0, W_WIDTH, W_HEIGHT);
 
-                    const dx = WIDGET_SIZE / (NODE_COUNT - 1);
+                                    const dx = W_WIDTH / (NODE_COUNT - 1);
 
-                    ctx.beginPath();
-                    ctx.moveTo(0, WIDGET_SIZE);
-                    for (let i = 0; i < NODE_COUNT; i++) {
-                        const ambientWave = Math.sin(clock * 1.5 + i * 0.4) * 4;
-                        ctx.lineTo(i * dx, nodes[i].y + ambientWave - 4);
-                    }
-                    ctx.lineTo(WIDGET_SIZE, WIDGET_SIZE);
-                    ctx.closePath();
-                    ctx.fillStyle = 'rgba(0, 119, 182, 0.45)';
-                    ctx.fill();
+                                    // 1. Secondary Ambient Wave (Deeper layer for 3D fluid depth)
+                                    ctx.beginPath();
+                                    ctx.moveTo(0, W_HEIGHT);
+                                    for (let i = 0; i < NODE_COUNT; i++) {
+                                        const ambientWave = Math.sin(clock * 1.5 + i * 0.4) * 4;
+                                        ctx.lineTo(i * dx, nodes[i].y + ambientWave - 4);
+                                    }
+                                    ctx.lineTo(W_WIDTH, W_HEIGHT);
+                                    ctx.closePath();
+                                    ctx.fillStyle = 'rgba(0, 110, 130, 0.45)'; // Adjusted for Caribbean teal
+                                    ctx.fill();
 
-                    ctx.save();
-                    ctx.translate(ship.x, ship.y - 12);
-                    ctx.rotate(ship.rot);
+                                    // 2. The Ship (Black Pearl style Galleon silhouette)
+                                    ctx.save();
+                                    ctx.translate(ship.x, ship.y - 18);
+                                    ctx.rotate(ship.rot);
 
-                    ctx.beginPath();
-                    ctx.moveTo(-28, 4);
-                    ctx.lineTo(-20, 16);
-                    ctx.lineTo(20, 16);
-                    ctx.lineTo(30, 4);
-                    ctx.closePath();
-                    ctx.fillStyle = '#ffffff';
-                    ctx.shadowColor = 'rgba(0,0,0,0.2)';
-                    ctx.shadowBlur = 6;
-                    ctx.fill();
+                                    // Hull
+                                    ctx.fillStyle = '#111111'; // Pitch dark wood
+                                    ctx.beginPath();
+                                    ctx.moveTo(-45, -5); // Stern high
+                                    ctx.lineTo(-35, 12); // Stern bottom
+                                    ctx.lineTo(35, 12);  // Bow bottom
+                                    ctx.lineTo(55, -12); // Bowsprit tip
+                                    ctx.lineTo(40, -5);  // Bow top
+                                    ctx.lineTo(-45, -5); 
+                                    ctx.fill();
+                    
+                                    // Hull trim detail
+                                    ctx.strokeStyle = '#8b6508'; // Dark gold/bronze
+                                    ctx.lineWidth = 1;
+                                    ctx.beginPath();
+                                    ctx.moveTo(-40, 0); ctx.lineTo(38, 0);
+                                    ctx.stroke();
 
-                    ctx.fillStyle = '#ff4757';
-                    ctx.fillRect(-12, -4, 24, 8);
+                                    // Masts
+                                    ctx.strokeStyle = '#0f0f0f';
+                                    ctx.lineWidth = 2.5;
+                                    ctx.beginPath();
+                                    ctx.moveTo(-25, -5); ctx.lineTo(-25, -55); // Mizzenmast
+                                    ctx.moveTo(0, -5); ctx.lineTo(0, -75);   // Mainmast
+                                    ctx.moveTo(25, -5); ctx.lineTo(25, -50);  // Foremast
+                                    ctx.stroke();
 
-                    ctx.strokeStyle = '#2f3542';
-                    ctx.lineWidth = 2.5;
-                    ctx.beginPath();
-                    ctx.moveTo(2, -4);
-                    ctx.lineTo(2, -18);
-                    ctx.stroke();
+                                    // Sails (Tattered, translucent grey)
+                                    ctx.fillStyle = 'rgba(230, 240, 245, 0.85)';
+                    
+                                    // Back (Mizzen) sails
+                                    ctx.beginPath();
+                                    ctx.moveTo(-25, -45); ctx.quadraticCurveTo(-10, -35, -25, -25);
+                                    ctx.moveTo(-25, -25); ctx.quadraticCurveTo(-10, -15, -25, -5);
+                                    ctx.fill();
 
-                    ctx.beginPath();
-                    ctx.moveTo(2, -18);
-                    ctx.lineTo(12, -14);
-                    ctx.lineTo(2, -10);
-                    ctx.closePath();
-                    ctx.fillStyle = '#ffa502';
-                    ctx.fill();
+                                    // Main sails
+                                    ctx.beginPath();
+                                    ctx.moveTo(0, -65); ctx.quadraticCurveTo(20, -50, 0, -35);
+                                    ctx.moveTo(0, -35); ctx.quadraticCurveTo(25, -20, 0, -5);
+                                    ctx.fill();
 
-                    ctx.restore();
+                                    // Front (Foremast) sails
+                                    ctx.beginPath();
+                                    ctx.moveTo(25, -45); ctx.quadraticCurveTo(40, -30, 25, -15);
+                                    ctx.moveTo(25, -15); ctx.quadraticCurveTo(40, -5, 25, 0);
+                                    ctx.fill();
 
-                    ctx.beginPath();
-                    ctx.moveTo(0, WIDGET_SIZE);
-                    ctx.lineTo(0, nodes[0].y);
+                                    // Pirate Flag (Jolly Roger silhouette)
+                                    ctx.fillStyle = '#000';
+                                    ctx.fillRect(-25, -55, -12, 6);
 
-                    for (let i = 0; i < NODE_COUNT - 1; i++) {
-                        const cx = (i * dx + (i + 1) * dx) / 2;
-                        const cy = (nodes[i].y + nodes[i + 1].y) / 2;
-                        ctx.quadraticCurveTo(i * dx, nodes[i].y, cx, cy);
-                    }
-                    ctx.lineTo(WIDGET_SIZE, nodes[NODE_COUNT - 1].y);
-                    ctx.lineTo(WIDGET_SIZE, WIDGET_SIZE);
-                    ctx.closePath();
+                                    ctx.restore();
 
-                    const oceanGrad = ctx.createLinearGradient(0, WIDGET_SIZE * 0.3, 0, WIDGET_SIZE);
-                    oceanGrad.addColorStop(0, 'rgba(0, 180, 216, 0.88)');
-                    oceanGrad.addColorStop(1, 'rgba(3, 4, 94, 0.95)');
-                    ctx.fillStyle = oceanGrad;
-                    ctx.fill();
+                                    // 3. Primary Ocean Water Body (Front layer)
+                                    ctx.beginPath();
+                                    ctx.moveTo(0, W_HEIGHT);
+                                    ctx.lineTo(0, nodes[0].y);
 
-                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
-                    ctx.lineWidth = 2;
-                    ctx.stroke();
+                                    // Bezier curve through nodes for liquid smoothness
+                                    for (let i = 0; i < NODE_COUNT - 1; i++) {
+                                        const cx = (i * dx + (i + 1) * dx) / 2;
+                                        const cy = (nodes[i].y + nodes[i + 1].y) / 2;
+                                        ctx.quadraticCurveTo(i * dx, nodes[i].y, cx, cy);
+                                    }
+                                    ctx.lineTo(W_WIDTH, nodes[NODE_COUNT - 1].y);
+                                    ctx.lineTo(W_WIDTH, W_HEIGHT);
+                                    ctx.closePath();
 
-                    for (let i = 0; i < NODE_COUNT; i++) {
-                        if (nodes[i].foam > 0.05) {
-                            const foamAlpha = Math.min(nodes[i].foam, 0.9);
-                            const foamRadius = 3 + nodes[i].foam * 5;
-                            ctx.beginPath();
-                            ctx.arc(i * dx, nodes[i].y, foamRadius, 0, Math.PI * 2);
-                            ctx.fillStyle = `rgba(255, 255, 255, ${foamAlpha})`;
-                            ctx.fill();
+                                    // Cinematic Teal water gradient
+                                    const oceanGrad = ctx.createLinearGradient(0, W_HEIGHT * 0.3, 0, W_HEIGHT);
+                                    oceanGrad.addColorStop(0, 'rgba(0, 160, 190, 0.8)'); // Lighter cyan crests
+                                    oceanGrad.addColorStop(1, 'rgba(0, 40, 80, 0.95)');  // Deep abyss blue
+                                    ctx.fillStyle = oceanGrad;
+                                    ctx.fill();
 
-                            ctx.beginPath();
-                            ctx.arc(i * dx + foamRadius * 0.8, nodes[i].y - 2, foamRadius * 0.4, 0, Math.PI * 2);
-                            ctx.fillStyle = `rgba(255, 255, 255, ${foamAlpha * 0.7})`;
-                            ctx.fill();
-                        }
-                    }
-                }
+                                    // 4. White Water Surface / Crest
+                                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
+                                    ctx.lineWidth = 2;
+                                    ctx.stroke();
 
-                function loop() {
-                    updatePhysics();
-                    draw();
-                    requestAnimationFrame(loop);
-                }
+                                    // 5. Foam / whitecaps on high-velocity nodes
+                                    for (let i = 0; i < NODE_COUNT; i++) {
+                                        if (nodes[i].foam > 0.05) {
+                                            const foamAlpha = Math.min(nodes[i].foam, 0.9);
+                                            const foamRadius = 3 + nodes[i].foam * 5;
+                                            ctx.beginPath();
+                                            ctx.arc(i * dx, nodes[i].y, foamRadius, 0, Math.PI * 2);
+                                            ctx.fillStyle = `rgba(255, 255, 255, ${foamAlpha})`;
+                                            ctx.fill();
+
+                                            ctx.beginPath();
+                                            ctx.arc(i * dx + foamRadius * 0.8, nodes[i].y - 2, foamRadius * 0.4, 0, Math.PI * 2);
+                                            ctx.fillStyle = `rgba(255, 255, 255, ${foamAlpha * 0.7})`;
+                                            ctx.fill();
+                                        }
+                                    }
+                                }
+
+                                function loop() {
+                                    updatePhysics();
+                                    draw();
+                                    requestAnimationFrame(loop);
+                                }
 
                 // --- Permissions Setup ---
                         startBtn.addEventListener('click', () => {
