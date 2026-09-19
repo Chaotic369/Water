@@ -235,99 +235,72 @@
         };
 
         // Shortest-distance angle interpolation to prevent 360° spin flips
-        function lerpAngle(current, target, factor) {
-            let diff = (target - current) % (Math.PI * 2);
-            if (diff < -Math.PI) diff += Math.PI * 2;
-            if (diff > Math.PI) diff -= Math.PI * 2;
-            return current + diff * factor;
-        }
+                function lerpAngle(current, target, factor) {
+                    let diff = (target - current) % (Math.PI * 2);
+                    if (diff < -Math.PI) diff += Math.PI * 2;
+                    if (diff > Math.PI) diff -= Math.PI * 2;
+                    return current + diff * factor;
+                }
 
-        // --- Sensor Event Listeners ---
-                let calibrationSamples = [];
-                let calibrationFrames = 0;
-                let hasAbsolute = false;
-
+                // --- Sensor Event Listeners ---
                 function processOrientation(e, isAbsolute) {
-                            orientationEventCount++;
-                            lastOrientationEventTime = Date.now();
-
-                            // CRITICAL FIX: Do NOT return on null. 
-                            // Many Android devices lack a physical gyroscope and send null for gamma/beta,
-                            // but still provide alpha (compass) via the magnetometer. Treat missing as 0.
-                            let rawGamma = e.gamma || 0;
-                            let rawBeta = e.beta || 0;
-                            let rawAlpha = e.alpha || 0;
-
-                            let gamma = rawGamma * (Math.PI / 180); // Roll
-                            let beta = rawBeta * (Math.PI / 180);   // Pitch
-                            let alpha = rawAlpha * (Math.PI / 180); // Compass
-
-                            if (!calibrated) {
-                                calibrationSamples.push(beta);
-                                calibrationFrames++;
-                                // Lower calibration frames from 10 to 3 so it starts instantly on low-frequency devices
-                                if (calibrationFrames >= 3) {
-                                    betaZero = calibrationSamples.reduce((a, b) => a + b, 0) / calibrationSamples.length;
-                                    calibrated = true;
-                                    calibratingText.style.display = 'none';
-                                    permissionUI.style.display = 'none';
-                                }
-                                return;
-                            }
-
-                            // Device horizon angle relative to ground gravity
-                            targetTilt = -Math.sin(gamma);
-                            targetPitch = Math.max(-0.5, Math.min(0.5, (beta - betaZero) * 0.5));
-
-                            // Accurate Compass Heading
-                            if (e.webkitCompassHeading !== undefined) {
-                                targetHeading = (e.webkitCompassHeading * Math.PI) / 180;
-                            } else {
-                                // If using absolute orientation, alpha is relative to Earth's coordinate frame
-                                targetHeading = (360 * Math.PI / 180) - alpha;
-                            }
-
-                            debugPanel.textContent =
-                                `Compass: ${Math.round(targetHeading * 180 / Math.PI)}° | Tilt: ${Math.round(rawGamma)}° | Pitch: ${Math.round(rawBeta)}°\n` +
-                                `Events: ${orientationEventCount} | Abs: ${isAbsolute}\n` +
-                                `Motion Events: ${motionEventCount}`;
-                        }
-
-                        function onOrientationAbsolute(e) {
-                            hasAbsolute = true;
-                            processOrientation(e, true);
-                        }
-
-                        function onOrientation(e) {
-                            if (hasAbsolute) return; // Ignore relative orientation if absolute is working
-                            processOrientation(e, false);
-                        }
-
-                        function onMotion(e) {
-                            motionEventCount++;
-                            lastMotionEventTime = Date.now();
+                    orientationEventCount++;
             
-                            // Safely fallback missing acceleration properties to 0 so it never freezes
-                            let acc = e.acceleration || e.accelerationIncludingGravity || { x: 0, y: 0, z: 0 };
-                            const x = acc.x || 0;
-                            const y = acc.y || 0;
-                            const z = acc.z || 0;
+                    // Instantly dismiss the overlay as soon as we prove the sensor works
+                    if (!calibrated) {
+                        calibrated = true;
+                        calibratingText.style.display = 'none';
+                        permissionUI.style.display = 'none';
+                    }
 
-                            const dx = x - lastShake.x;
-                            const dy = y - lastShake.y;
-                            const dz = z - lastShake.z;
+                    // Treat missing hardware sensors as 0 so the rest of the math doesn't explode
+                    let rawGamma = e.gamma || 0;
+                    let rawBeta = e.beta || 0;
+                    let rawAlpha = e.alpha || 0;
 
-                            lastShake = { x, y, z };
+                    let gamma = rawGamma * (Math.PI / 180);
+                    let beta = rawBeta * (Math.PI / 180);
+
+                    targetTilt = -Math.sin(gamma);
+                    targetPitch = Math.max(-0.5, Math.min(0.5, (beta - 0.78) * 0.5));
+
+                    // Compass calculation identical to typical online web-compasses
+                    if (e.webkitCompassHeading !== undefined) {
+                        targetHeading = (e.webkitCompassHeading * Math.PI) / 180;
+                    } else {
+                        targetHeading = (360 - rawAlpha) * (Math.PI / 180);
+                    }
+
+                    debugPanel.textContent = 
+                        `Cmp: ${Math.round(targetHeading * 180 / Math.PI)}° | Tlt: ${Math.round(rawGamma)}° | Ptch: ${Math.round(rawBeta)}°\n` +
+                        `Evts: ${orientationEventCount} | Abs: ${isAbsolute} | Mot: ${motionEventCount}`;
+                }
+
+                function onOrientationAbsolute(e) {
+                    processOrientation(e, true);
+                }
+
+                function onOrientation(e) {
+                    processOrientation(e, false);
+                }
+
+                function onMotion(e) {
+                    motionEventCount++;
+                    let acc = e.acceleration || e.accelerationIncludingGravity || { x: 0, y: 0, z: 0 };
+                    const x = acc.x || 0; const y = acc.y || 0; const z = acc.z || 0;
+
+                    const dx = x - lastShake.x;
+                    const dy = y - lastShake.y;
+                    const dz = z - lastShake.z;
+                    lastShake = { x, y, z };
 
                     const jerk = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
                     shakeBuffer[shakeBufferIdx] = jerk;
                     shakeBufferIdx = (shakeBufferIdx + 1) % SHAKE_BUFFER_SIZE;
                     const avgJerk = shakeBuffer.reduce((a, b) => a + b, 0) / SHAKE_BUFFER_SIZE;
 
                     if (avgJerk > 2.4) {
                         const splashForce = Math.min(avgJerk * 2.0, 55);
-
                         if (dx > 0) {
                             nodes[0].velocity += splashForce * 0.8;
                             nodes[nodes.length - 1].velocity -= splashForce * 0.8;
@@ -335,9 +308,7 @@
                             nodes[0].velocity -= splashForce * 0.8;
                             nodes[nodes.length - 1].velocity += splashForce * 0.8;
                         }
-
                         nodes[Math.floor(NODE_COUNT / 2)].velocity += (Math.random() - 0.5) * splashForce;
-
                         if (Math.abs(dz) > 1.5) {
                             for (let i = 0; i < NODE_COUNT; i++) {
                                 nodes[i].velocity += (dz > 0 ? 1 : -1) * Math.min(Math.abs(dz) * 0.6, 8);
@@ -506,53 +477,48 @@
                 }
 
                 // --- Permissions Setup ---
-                startBtn.addEventListener('click', async () => {
-                    calibratingText.style.display = 'block';
-                    startBtn.style.display = 'none';
+                        startBtn.addEventListener('click', () => {
+                            calibratingText.style.display = 'block';
+                            startBtn.style.display = 'none';
 
-                    const attachListeners = () => {
-                        // Register all listeners simultaneously. Deduplication is handled inside the event processors.
-                        window.addEventListener('deviceorientationabsolute', onOrientationAbsolute, true);
-                        window.addEventListener('deviceorientation', onOrientation, true);
-                        window.addEventListener('devicemotion', onMotion, true);
-                    };
+                            const isIOS = /(iPod|iPhone|iPad)/i.test(navigator.userAgent);
+            
+                            const attachSensors = () => {
+                                // Follow the exact binding pattern of working compass sites
+                                if (!isIOS && 'ondeviceorientationabsolute' in window) {
+                                    window.addEventListener('deviceorientationabsolute', onOrientationAbsolute, true);
+                                } else {
+                                    window.addEventListener('deviceorientation', onOrientation, true);
+                                }
+                                window.addEventListener('devicemotion', onMotion, true);
+                            };
 
-                    // iOS Permission Request
-                    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                        try {
-                            const orientPerm = await DeviceOrientationEvent.requestPermission();
-                            let motionPerm = 'granted';
-                            if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
-                                motionPerm = await DeviceMotionEvent.requestPermission();
-                            }
-
-                            if (orientPerm === 'granted' && motionPerm === 'granted') {
-                                attachListeners();
+                            // iOS 13+ requires explicit permission request
+                            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                                DeviceOrientationEvent.requestPermission()
+                                    .then(permissionState => {
+                                        if (permissionState === 'granted') attachSensors();
+                                        else forceCalibration();
+                                    })
+                                    .catch(console.error);
                             } else {
-                                forceCalibration();
+                                // Android automatically provides access when bound
+                                attachSensors();
                             }
-                        } catch (err) {
-                            console.error(err);
-                            forceCalibration();
+
+                            // Failsafe: If no events arrive within 2 seconds, force dismiss
+                            setTimeout(forceCalibration, 2000);
+                        });
+
+                        function forceCalibration() {
+                            if (!calibrated) {
+                                calibrated = true;
+                                calibratingText.style.display = 'none';
+                                permissionUI.style.display = 'none';
+                            }
                         }
-                    } else {
-                        // Android & Standard Browsers
-                        attachListeners();
-                    }
 
-                    // Safety fallback: prevent lockup if no sensors exist
-                    setTimeout(forceCalibration, 2000);
-                });
-        
-                function forceCalibration() {
-                    if (!calibrated) {
-                        calibrated = true;
-                        calibratingText.style.display = 'none';
-                        permissionUI.style.display = 'none';
-                    }
-                }
-
-                // Desktop Fallback (Drag or move mouse to test tilting)
+                        // Desktop Fallback (Drag or move mouse to test tilting)
         window.addEventListener('mousemove', (e) => {
             if (permissionUI.style.display !== 'none') permissionUI.style.display = 'none';
             calibrated = true;
