@@ -63,38 +63,7 @@
                             transform-origin: center;
                         }
 
-                        .celestial-toggle {
-                            position: absolute;
-                            top: 12px;
-                            left: 14px;
-                            display: flex;
-                            gap: 6px;
-                            background: rgba(0, 0, 0, 0.35);
-                            backdrop-filter: blur(6px);
-                            -webkit-backdrop-filter: blur(6px);
-                            padding: 3px 6px;
-                            border-radius: 20px;
-                            z-index: 10;
-                            border: 1px solid rgba(255, 255, 255, 0.15);
-                        }
-
-                        .celestial-btn {
-                            font-size: 13px;
-                            cursor: pointer;
-                            padding: 2px 6px;
-                            border-radius: 12px;
-                            opacity: 0.55;
-                            transition: all 0.2s ease;
-                            line-height: 1.2;
-                        }
-
-                        .celestial-btn.active {
-                            opacity: 1;
-                            background: rgba(255, 255, 255, 0.22);
-                            box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
-                        }
-
-                @media (max-width: 550px) {
+                        @media (max-width: 550px) {
                     .widget-box {
                         transform: scale(0.9);
                     }
@@ -191,11 +160,7 @@
     </div>
 
     <div class="widget-box">
-                <div class="celestial-toggle" id="celestial-toggle">
-                <span class="celestial-btn" id="sun-btn" title="Sun lighting">☀️</span>
-                <span class="celestial-btn active" id="moon-btn" title="Moon lighting">🌙</span>
-            </div>
-            <canvas id="ocean-canvas"></canvas>
+                <canvas id="ocean-canvas"></canvas>
         </div>
 
     <div id="debug-panel">Waiting for sensor events…</div>
@@ -207,10 +172,8 @@
                 const startBtn = document.getElementById('start-btn');
                 const calibratingText = document.getElementById('calibrating-text');
                         const debugPanel = document.getElementById('debug-panel');
-                const sunBtn = document.getElementById('sun-btn');
-                const moonBtn = document.getElementById('moon-btn');
 
-                let isNight = true;
+                                        let isNight = true;
                 const stars = [];
                 for (let i = 0; i < 35; i++) {
                     stars.push({
@@ -223,44 +186,26 @@
 
                 function setLighting(night) {
                             isNight = night;
-                            if (sunBtn && moonBtn) {
-                                if (isNight) {
-                                    moonBtn.classList.add('active');
-                                    sunBtn.classList.remove('active');
-                                } else {
-                                    sunBtn.classList.add('active');
-                                    moonBtn.classList.remove('active');
-                                }
-                            }
-                            if (isNight) {
+                                                        if (isNight) {
                                 document.body.classList.add('night-mode');
                             } else {
                                 document.body.classList.remove('night-mode');
                             }
                         }
 
-                if (sunBtn) {
-                    sunBtn.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        setLighting(false);
-                    });
-                }
-                if (moonBtn) {
-                    moonBtn.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        setLighting(true);
-                    });
-                }
-                canvas.addEventListener('click', (e) => {
-                    const rect = canvas.getBoundingClientRect();
-                    const clickX = (e.clientX - rect.left) * (W_WIDTH / rect.width);
-                    const clickY = (e.clientY - rect.top) * (W_HEIGHT / rect.height);
-                    if (clickX >= 270 && clickX <= 355 && clickY >= 15 && clickY <= 85) {
-                        e.stopPropagation();
-                        setLighting(!isNight);
-                    }
-                });
-                setLighting(true);
+                // Tap the moon or sun in the sky to switch between night and day
+                                canvas.addEventListener('click', (e) => {
+                                    const rect = canvas.getBoundingClientRect();
+                                    const clickX = (e.clientX - rect.left) * (W_WIDTH / rect.width);
+                                    const clickY = (e.clientY - rect.top) * (W_HEIGHT / rect.height);
+                                    const distX = clickX - 315;
+                                    const distY = clickY - 48;
+                                    if (distX * distX + distY * distY <= 30 * 30) {
+                                        e.stopPropagation();
+                                        setLighting(!isNight);
+                                    }
+                                });
+                                setLighting(true);
 
                 let lastOrientationEventTime = 0;
         let lastMotionEventTime = 0;
@@ -873,13 +818,7 @@
                                                                                                                                                                                                                                                                                                 ctx.quadraticCurveTo(i * dx, nodes[i].y + 3 + nodes[i].foam * 2, (i * dx + nextI * dx) / 2, (nodes[i].y + nodes[nextI].y) / 2 + 3 + nodes[i].foam * 2);
                                                                                                                                                                                                                                                                                                 ctx.stroke();
 
-                                                                                                // Trailing foam streak behind the crest (fading lace of bubbles)
-                                                                                                                                                                                                ctx.strokeStyle = isNight ? `rgba(205, 230, 255, ${foamAlpha * 0.2})` : `rgba(255, 255, 255, ${foamAlpha * 0.25})`;
-                                                                                                                                                                                                                                                                                                                                                                                                ctx.lineWidth = 0.8;
-                                                                                                                                                                                                ctx.beginPath();
-                                                                                                                                                                                                ctx.moveTo(i * dx - spread * 1.6, nodes[i].y + 2 + nodes[i].foam * 2);
-                                                                                                                                                                                                ctx.lineTo(i * dx + spread * 1.6, nodes[i].y + 3 + nodes[i].foam * 2);
-                                                                                                                                                                                                ctx.stroke();
+                                                                                                
 
                                                                                                                                                                                                 // Spray streaks rising off the crest on hard impacts (no bubbles)
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 if (nodes[i].foam > 0.5) {
