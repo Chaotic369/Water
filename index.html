@@ -579,10 +579,23 @@
                                                                                                                                         ctx.fillStyle = farGrad;
                                                                                                                                         ctx.fill();
 
-                                                                    // 2. The Ship (Black Pearl style Galleon silhouette)
-                                                                    ctx.save();
-                                                                    ctx.translate(ship.x, ship.y - 18);
-                                                                    ctx.rotate(ship.rot);
+                                                                    // Ship drop shadow / reflection on the water surface
+                                                                                                                                        ctx.save();
+                                                                                                                                        ctx.translate(ship.x, ship.y + 4);
+                                                                                                                                        ctx.scale(1, 0.18);
+                                                                                                                                        const shadowGrad = ctx.createRadialGradient(0, 0, 4, 0, 0, 55);
+                                                                                                                                        shadowGrad.addColorStop(0, isNight ? 'rgba(0, 0, 0, 0.5)' : 'rgba(0, 20, 40, 0.42)');
+                                                                                                                                        shadowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                                                                                                                                        ctx.fillStyle = shadowGrad;
+                                                                                                                                        ctx.beginPath();
+                                                                                                                                        ctx.arc(0, 0, 55, 0, Math.PI * 2);
+                                                                                                                                        ctx.fill();
+                                                                                                                                        ctx.restore();
+
+                                                                                                                                        // 2. The Ship (Black Pearl style Galleon silhouette)
+                                                                                                                                        ctx.save();
+                                                                                                                                        ctx.translate(ship.x, ship.y - 18);
+                                                                                                                                        ctx.rotate(ship.rot);
 
                                                                     // Hull
                                                                                                                                         const hullGrad = ctx.createLinearGradient(0, -12, 0, 12);
@@ -747,19 +760,33 @@
                                                                                                                                         ctx.fill();
 
                                                                                                                                         // Sub-surface swell bands (moving light/dark undulation for real water depth)
-                                                                                                                                        ctx.save();
-                                                                                                                                        ctx.clip();
-                                                                                                                                        for (let b = 0; b < 5; b++) {
-                                                                                                                                            const by = W_HEIGHT * 0.56 + b * 15;
-                                                                                                                                            ctx.beginPath();
-                                                                                                                                            ctx.moveTo(0, by);
-                                                                                                                                            for (let x = 0; x <= W_WIDTH; x += 8) {
-                                                                                                                                                ctx.lineTo(x, by + Math.sin(x * 0.03 + clock * (0.8 + b * 0.25) + b * 1.7) * (2.2 + b * 0.5));
-                                                                                                                                            }
-                                                                                                                                            ctx.strokeStyle = isNight ? `rgba(120, 175, 230, ${0.07 - b * 0.01})` : `rgba(210, 245, 255, ${0.16 - b * 0.025})`;
-                                                                                                                                            ctx.lineWidth = 1.2 + b * 0.3;
-                                                                                                                                            ctx.stroke();
-                                                                                                                                        }
+                                                                                                                                                                                                            ctx.save();
+                                                                                                                                                                                                            ctx.clip();
+                                                                                                                                                                                                            for (let b = 0; b < 8; b++) {
+                                                                                                                                                                                                                const by = W_HEIGHT * 0.55 + b * 10;
+                                                                                                                                                                                                                ctx.beginPath();
+                                                                                                                                                                                                                ctx.moveTo(0, by);
+                                                                                                                                                                                                                for (let x = 0; x <= W_WIDTH; x += 6) {
+                                                                                                                                                                                                                    ctx.lineTo(x, by + Math.sin(x * 0.03 + clock * (0.8 + b * 0.25) + b * 1.7) * (1.6 + b * 0.45) + Math.sin(x * 0.075 - clock * 1.3 + b * 2.9) * (0.8 + b * 0.15));
+                                                                                                                                                                                                                }
+                                                                                                                                            ctx.strokeStyle = isNight ? `rgba(120, 175, 230, ${Math.max(0.02, 0.075 - b * 0.008)})` : `rgba(210, 245, 255, ${Math.max(0.04, 0.17 - b * 0.018)})`;
+                                                                                                                                                                                                                    ctx.lineWidth = 0.9 + b * 0.25;
+                                                                                                                                                                                                                    ctx.stroke();
+                                                                                                                                                                                                                }
+
+                                                                                                                                                                                                                // Fine surface ripple texture (short dashes that drift like wind chop)
+                                                                                                                                                                                                                for (let r = 0; r < 40; r++) {
+                                                                                                                                                                                                                    const rx = ((r * 37.3) + clock * (6 + (r % 5) * 2)) % W_WIDTH;
+                                                                                                                                                                                                                    const ri2 = Math.max(0, Math.min(NODE_COUNT - 1, Math.floor(rx / dx)));
+                                                                                                                                                                                                                    const rowY = nodes[ri2].y + 5 + ((r * 23) % 85);
+                                                                                                                                                                                                                    const fade = 0.5 + 0.5 * Math.sin(clock * 1.7 + r * 1.3);
+                                                                                                                                                                                                                    ctx.strokeStyle = isNight ? `rgba(160, 205, 255, ${0.09 * fade})` : `rgba(235, 252, 255, ${0.2 * fade})`;
+                                                                                                                                                                                                                    ctx.lineWidth = 0.8;
+                                                                                                                                                                                                                    ctx.beginPath();
+                                                                                                                                                                                                                    ctx.moveTo(rx, rowY);
+                                                                                                                                                                                                                    ctx.lineTo(rx + 5 + (r % 4) * 2, rowY + 0.4);
+                                                                                                                                                                                                                    ctx.stroke();
+                                                                                                                                                                                                                }
 
                                                                                                                                         // Specular glints (tiny sparkles on wave facets catching the light)
                                                                                                                                         for (let g = 0; g < 26; g++) {
@@ -828,13 +855,17 @@
                                                                                                                                                                                                 ctx.lineTo(i * dx + spread * 1.6, nodes[i].y + 3 + nodes[i].foam * 2);
                                                                                                                                                                                                 ctx.stroke();
 
-                                                                                                                                                                                                // Scattered droplets for high impacts (like tapping the screen)
-                                                                                                                                                                                                if (nodes[i].foam > 0.3) {
-                                                                                                                                                                                                    ctx.beginPath();
-                                                                                                                                                                                                    const dropX = i * dx + ((i % 3) - 1) * 6;
-                                                                                                                                                                                                    const dropY = nodes[i].y - splashHeight - 5;
-                                                                                                                                                                                                    ctx.arc(dropX, dropY, nodes[i].foam * 1.8, 0, Math.PI * 2);
-                                                                                                                                                                                                    ctx.fillStyle = isNight ? `rgba(215, 235, 255, ${foamAlpha * 0.75})` : `rgba(255, 255, 255, ${foamAlpha * 0.8})`;
+                                                                                                                                                                                                // Spray streaks rising off the crest on hard impacts (no bubbles)
+                                                                                                                                                                                                                                                                                                if (nodes[i].foam > 0.3) {
+                                                                                                                                                                                                                                                                                                    const sprayLen = nodes[i].foam * 9;
+                                                                                                                                                                                                                                                                                                    const sprayLean = ((i % 3) - 1) * 2.5;
+                                                                                                                                                                                                                                                                                                    ctx.strokeStyle = isNight ? `rgba(215, 235, 255, ${foamAlpha * 0.45})` : `rgba(255, 255, 255, ${foamAlpha * 0.5})`;
+                                                                                                                                                                                                                                                                                                    ctx.lineWidth = 0.8;
+                                                                                                                                                                                                                                                                                                    ctx.beginPath();
+                                                                                                                                                                                                                                                                                                    ctx.moveTo(i * dx, nodes[i].y - splashHeight * 0.3);
+                                                                                                                                                                                                                                                                                                    ctx.quadraticCurveTo(i * dx + sprayLean, nodes[i].y - splashHeight - sprayLen * 0.5, i * dx + sprayLean * 1.8, nodes[i].y - splashHeight - sprayLen);
+                                                                                                                                                                                                                                                                                                    ctx.stroke();
+                                                                                                                                                                                                                                                                                                })` : `rgba(255, 255, 255, ${foamAlpha * 0.8})`;
                                                                                                                                                                                                     ctx.fill();
 
                                                                                                                                                                                                     // Secondary tiny spray droplets flung outward from the impact
@@ -908,11 +939,12 @@
             targetHeading = normX * Math.PI;
         });
 
-        // Desktop Click to trigger splash
-        window.addEventListener('click', () => {
-            nodes[0].velocity += 20;
-            nodes[nodes.length - 1].velocity -= 20;
-        });
+        // Desktop Click to trigger splash (surge from both edges plus a center impact for a natural wave collision)
+                window.addEventListener('click', () => {
+                    nodes[0].velocity += 20;
+                    nodes[nodes.length - 1].velocity -= 20;
+                    nodes[Math.floor(NODE_COUNT / 2)].velocity += (Math.random() - 0.5) * 14;
+                });
 
         loop();
 
