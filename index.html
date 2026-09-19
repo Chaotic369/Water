@@ -248,68 +248,76 @@
                 let hasAbsolute = false;
 
                 function processOrientation(e, isAbsolute) {
-                    orientationEventCount++;
-                    lastOrientationEventTime = Date.now();
+                            orientationEventCount++;
+                            lastOrientationEventTime = Date.now();
 
-                    if (e.gamma == null || e.beta == null) {
-                        return;
-                    }
+                            // CRITICAL FIX: Do NOT return on null. 
+                            // Many Android devices lack a physical gyroscope and send null for gamma/beta,
+                            // but still provide alpha (compass) via the magnetometer. Treat missing as 0.
+                            let rawGamma = e.gamma || 0;
+                            let rawBeta = e.beta || 0;
+                            let rawAlpha = e.alpha || 0;
 
-                    let gamma = e.gamma * (Math.PI / 180); // Roll
-                    let beta = e.beta * (Math.PI / 180);   // Pitch
-                    let alpha = (e.alpha || 0) * (Math.PI / 180); // Compass
+                            let gamma = rawGamma * (Math.PI / 180); // Roll
+                            let beta = rawBeta * (Math.PI / 180);   // Pitch
+                            let alpha = rawAlpha * (Math.PI / 180); // Compass
 
-                    if (!calibrated) {
-                        calibrationSamples.push(beta);
-                        calibrationFrames++;
-                        if (calibrationFrames >= 10) {
-                            betaZero = calibrationSamples.reduce((a, b) => a + b, 0) / calibrationSamples.length;
-                            calibrated = true;
-                            calibratingText.style.display = 'none';
-                            permissionUI.style.display = 'none';
+                            if (!calibrated) {
+                                calibrationSamples.push(beta);
+                                calibrationFrames++;
+                                // Lower calibration frames from 10 to 3 so it starts instantly on low-frequency devices
+                                if (calibrationFrames >= 3) {
+                                    betaZero = calibrationSamples.reduce((a, b) => a + b, 0) / calibrationSamples.length;
+                                    calibrated = true;
+                                    calibratingText.style.display = 'none';
+                                    permissionUI.style.display = 'none';
+                                }
+                                return;
+                            }
+
+                            // Device horizon angle relative to ground gravity
+                            targetTilt = -Math.sin(gamma);
+                            targetPitch = Math.max(-0.5, Math.min(0.5, (beta - betaZero) * 0.5));
+
+                            // Accurate Compass Heading
+                            if (e.webkitCompassHeading !== undefined) {
+                                targetHeading = (e.webkitCompassHeading * Math.PI) / 180;
+                            } else {
+                                // If using absolute orientation, alpha is relative to Earth's coordinate frame
+                                targetHeading = (360 * Math.PI / 180) - alpha;
+                            }
+
+                            debugPanel.textContent =
+                                `Compass: ${Math.round(targetHeading * 180 / Math.PI)}° | Tilt: ${Math.round(rawGamma)}° | Pitch: ${Math.round(rawBeta)}°\n` +
+                                `Events: ${orientationEventCount} | Abs: ${isAbsolute}\n` +
+                                `Motion Events: ${motionEventCount}`;
                         }
-                        return;
-                    }
 
-                    // Device horizon angle relative to ground gravity
-                    targetTilt = -Math.sin(gamma);
-                    targetPitch = Math.max(-0.5, Math.min(0.5, (beta - betaZero) * 0.5));
+                        function onOrientationAbsolute(e) {
+                            hasAbsolute = true;
+                            processOrientation(e, true);
+                        }
 
-                    // Accurate Compass Heading
-                    if (e.webkitCompassHeading !== undefined) {
-                        targetHeading = (e.webkitCompassHeading * Math.PI) / 180;
-                    } else {
-                        // If using absolute orientation, alpha is relative to Earth's coordinate frame
-                        targetHeading = (360 * Math.PI / 180) - alpha;
-                    }
+                        function onOrientation(e) {
+                            if (hasAbsolute) return; // Ignore relative orientation if absolute is working
+                            processOrientation(e, false);
+                        }
 
-                    debugPanel.textContent =
-                        `Compass: ${Math.round(targetHeading * 180 / Math.PI)}° | Tilt: ${Math.round(e.gamma)}° | Pitch: ${Math.round(e.beta)}°\n` +
-                        `Events: ${orientationEventCount} | Abs: ${isAbsolute}\n` +
-                        `Motion Events: ${motionEventCount}`;
-                }
+                        function onMotion(e) {
+                            motionEventCount++;
+                            lastMotionEventTime = Date.now();
+            
+                            // Safely fallback missing acceleration properties to 0 so it never freezes
+                            let acc = e.acceleration || e.accelerationIncludingGravity || { x: 0, y: 0, z: 0 };
+                            const x = acc.x || 0;
+                            const y = acc.y || 0;
+                            const z = acc.z || 0;
 
-                function onOrientationAbsolute(e) {
-                    hasAbsolute = true;
-                    processOrientation(e, true);
-                }
+                            const dx = x - lastShake.x;
+                            const dy = y - lastShake.y;
+                            const dz = z - lastShake.z;
 
-                function onOrientation(e) {
-                    if (hasAbsolute) return; // Ignore relative orientation if absolute is working
-                    processOrientation(e, false);
-                }
-
-                function onMotion(e) {
-                    motionEventCount++;
-                    lastMotionEventTime = Date.now();
-                    let acc = e.acceleration || e.accelerationIncludingGravity;
-                    if (!acc || acc.x == null) return;
-
-                    const dx = acc.x - lastShake.x;
-                    const dy = acc.y - lastShake.y;
-                    const dz = acc.z - lastShake.z;
-
-                    lastShake = { x: acc.x, y: acc.y, z: acc.z };
+                            lastShake = { x, y, z };
 
                     const jerk = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
