@@ -455,7 +455,13 @@
                                         }
                                     }
 
-                                    // Ship horizontal motion (drifting with tilt and time)
+                                    // Surface smoothing: blend each node toward its neighbours so the water edge stays a clean curve
+                                                                        for (let i = 1; i < NODE_COUNT - 1; i++) {
+                                                                            const smoothed = (nodes[i - 1].y + nodes[i + 1].y) * 0.5;
+                                                                            nodes[i].y += (smoothed - nodes[i].y) * 0.18;
+                                                                        }
+
+                                                                        // Ship horizontal motion (drifting with tilt and time)
                                                         ship.sway = Math.sin(clock * 0.6) * 20 + (currentTilt * 50);
                                                         ship.x = (W_WIDTH / 2) + ship.sway;
                     
@@ -823,13 +829,22 @@
                                                                                                                                             ctx.fill();
                                                                                                                                         }
 
-                                                                    // 4. White Water Surface / Crest (soft glow pass under a crisp highlight line)
-                                                                                                                                        ctx.strokeStyle = isNight ? 'rgba(150, 200, 255, 0.18)' : 'rgba(255, 255, 255, 0.22)';
-                                                                                                                                        ctx.lineWidth = 5;
-                                                                                                                                        ctx.stroke();
-                                                                                                                                        ctx.strokeStyle = isNight ? 'rgba(190, 225, 255, 0.6)' : 'rgba(255, 255, 255, 0.72)';
-                                                                                                                                        ctx.lineWidth = 1.6;
-                                                                                                                                        ctx.stroke();
+                                                                    // 4. Water Surface line (crisp, no glow halo)
+                                                                                                                                                                                                            ctx.strokeStyle = isNight ? 'rgba(190, 225, 255, 0.45)' : 'rgba(255, 255, 255, 0.55)';
+                                                                                                                                                                                                            ctx.lineWidth = 1.4;
+                                                                                                                                                                                                            ctx.stroke();
+
+                                                                                                                                        // Ambient agitation tint: the whole water body brightens softly with overall wave energy
+                                                                                                                                        let waveEnergy = 0;
+                                                                                                                                        for (let i = 0; i < NODE_COUNT; i++) waveEnergy += nodes[i].foam;
+                                                                                                                                        waveEnergy = Math.min(1, waveEnergy / (NODE_COUNT * 0.35));
+                                                                                                                                        if (waveEnergy > 0.02) {
+                                                                                                                                            const ambientTint = ctx.createLinearGradient(0, W_HEIGHT * 0.45, 0, W_HEIGHT);
+                                                                                                                                            ambientTint.addColorStop(0, isNight ? `rgba(90, 150, 210, ${waveEnergy * 0.1})` : `rgba(200, 245, 255, ${waveEnergy * 0.14})`);
+                                                                                                                                            ambientTint.addColorStop(1, isNight ? `rgba(40, 90, 150, ${waveEnergy * 0.05})` : `rgba(120, 210, 235, ${waveEnergy * 0.07})`);
+                                                                                                                                            ctx.fillStyle = ambientTint;
+                                                                                                                                            ctx.fillRect(0, W_HEIGHT * 0.45, W_WIDTH, W_HEIGHT * 0.55);
+                                                                                                                                        }
 
                                                                     // 5. Foam / whitecaps on high-velocity nodes
                                                                     ctx.lineCap = 'round';
@@ -839,47 +854,46 @@
                                                                                                 const splashHeight = nodes[i].foam * 8;
                                                                                                 const spread = dx * 0.7;
                             
-                                                                                                // 5. Stylized Foam / Whitecaps (Organic frothy crests instead of circles)
-                                                                                                ctx.strokeStyle = isNight ? `rgba(205, 230, 255, ${foamAlpha * 0.85})` : `rgba(255, 255, 255, ${foamAlpha})`;
-                                                                                                ctx.lineWidth = 2 + nodes[i].foam * 2.5;
-                                                                                                ctx.beginPath();
-                                                                                                ctx.moveTo(i * dx - spread, nodes[i].y - splashHeight * 0.15);
-                                                                                                ctx.lineTo(i * dx + spread, nodes[i].y - splashHeight * 0.15);
-                                                                                                ctx.stroke();
+                                                                                                // 5. Smooth foam ribbon: short curved segment that follows the water surface (no straight sticks)
+                                                                                                                                                                                                const prevI = Math.max(0, i - 1);
+                                                                                                                                                                                                const nextI = Math.min(NODE_COUNT - 1, i + 1);
+                                                                                                                                                                                                const foamLift = splashHeight * 0.15;
+                                                                                                                                                                                                ctx.strokeStyle = isNight ? `rgba(205, 230, 255, ${foamAlpha * 0.4})` : `rgba(255, 255, 255, ${foamAlpha * 0.5})`;
+                                                                                                                                                                                                ctx.lineWidth = 1.2 + nodes[i].foam * 1.2;
+                                                                                                                                                                                                ctx.beginPath();
+                                                                                                                                                                                                ctx.moveTo((i * dx + prevI * dx) / 2, (nodes[i].y + nodes[prevI].y) / 2 - foamLift);
+                                                                                                                                                                                                ctx.quadraticCurveTo(i * dx, nodes[i].y - foamLift, (i * dx + nextI * dx) / 2, (nodes[i].y + nodes[nextI].y) / 2 - foamLift);
+                                                                                                                                                                                                ctx.stroke();
+
+                                                                                                                                                                                                // Trailing foam streak behind the crest (soft curve just under the surface)
+                                                                                                                                                                                                                                                                                                ctx.strokeStyle = isNight ? `rgba(205, 230, 255, ${foamAlpha * 0.2})` : `rgba(255, 255, 255, ${foamAlpha * 0.25})`;
+                                                                                                                                                                                                                                                                                                ctx.lineWidth = 0.8;
+                                                                                                                                                                                                                                                                                                ctx.beginPath();
+                                                                                                                                                                                                                                                                                                ctx.moveTo((i * dx + prevI * dx) / 2, (nodes[i].y + nodes[prevI].y) / 2 + 2 + nodes[i].foam * 2);
+                                                                                                                                                                                                                                                                                                ctx.quadraticCurveTo(i * dx, nodes[i].y + 3 + nodes[i].foam * 2, (i * dx + nextI * dx) / 2, (nodes[i].y + nodes[nextI].y) / 2 + 3 + nodes[i].foam * 2);
+                                                                                                                                                                                                                                                                                                ctx.stroke();
 
                                                                                                 // Trailing foam streak behind the crest (fading lace of bubbles)
-                                                                                                                                                                                                ctx.strokeStyle = isNight ? `rgba(205, 230, 255, ${foamAlpha * 0.35})` : `rgba(255, 255, 255, ${foamAlpha * 0.4})`;
-                                                                                                                                                                                                ctx.lineWidth = 1;
+                                                                                                                                                                                                ctx.strokeStyle = isNight ? `rgba(205, 230, 255, ${foamAlpha * 0.2})` : `rgba(255, 255, 255, ${foamAlpha * 0.25})`;
+                                                                                                                                                                                                                                                                                                                                                                                                ctx.lineWidth = 0.8;
                                                                                                                                                                                                 ctx.beginPath();
                                                                                                                                                                                                 ctx.moveTo(i * dx - spread * 1.6, nodes[i].y + 2 + nodes[i].foam * 2);
                                                                                                                                                                                                 ctx.lineTo(i * dx + spread * 1.6, nodes[i].y + 3 + nodes[i].foam * 2);
                                                                                                                                                                                                 ctx.stroke();
 
                                                                                                                                                                                                 // Spray streaks rising off the crest on hard impacts (no bubbles)
-                                                                                                                                                                                                                                                                                                if (nodes[i].foam > 0.3) {
-                                                                                                                                                                                                                                                                                                    const sprayLen = nodes[i].foam * 9;
-                                                                                                                                                                                                                                                                                                    const sprayLean = ((i % 3) - 1) * 2.5;
-                                                                                                                                                                                                                                                                                                    ctx.strokeStyle = isNight ? `rgba(215, 235, 255, ${foamAlpha * 0.45})` : `rgba(255, 255, 255, ${foamAlpha * 0.5})`;
-                                                                                                                                                                                                                                                                                                    ctx.lineWidth = 0.8;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                if (nodes[i].foam > 0.5) {
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    const sprayLen = nodes[i].foam * 5;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    const sprayLean = ((i % 3) - 1) * 1.5;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    ctx.strokeStyle = isNight ? `rgba(215, 235, 255, ${foamAlpha * 0.22})` : `rgba(255, 255, 255, ${foamAlpha * 0.25})`;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    ctx.lineWidth = 0.6;
                                                                                                                                                                                                                                                                                                     ctx.beginPath();
                                                                                                                                                                                                                                                                                                     ctx.moveTo(i * dx, nodes[i].y - splashHeight * 0.3);
                                                                                                                                                                                                                                                                                                     ctx.quadraticCurveTo(i * dx + sprayLean, nodes[i].y - splashHeight - sprayLen * 0.5, i * dx + sprayLean * 1.8, nodes[i].y - splashHeight - sprayLen);
                                                                                                                                                                                                                                                                                                     ctx.stroke();
-                                                                                                                                                                                                                                                                                                })` : `rgba(255, 255, 255, ${foamAlpha * 0.8})`;
-                                                                                                                                                                                                    ctx.fill();
-
-                                                                                                                                                                                                    // Secondary tiny spray droplets flung outward from the impact
-                                                                                                                                                                                                    for (let k = 0; k < 3; k++) {
-                                                                                                                                                                                                        const sx = dropX + (k - 1) * (5 + nodes[i].foam * 4);
-                                                                                                                                                                                                        const sy = dropY - k * 2.5 - nodes[i].foam * 3 + Math.abs(k - 1) * 3;
-                                                                                                                                                                                                        ctx.beginPath();
-                                                                                                                                                                                                        ctx.arc(sx, sy, 0.6 + nodes[i].foam * 0.7, 0, Math.PI * 2);
-                                                                                                                                                                                                        ctx.fillStyle = isNight ? `rgba(215, 235, 255, ${foamAlpha * 0.55})` : `rgba(255, 255, 255, ${foamAlpha * 0.6})`;
-                                                                                                                                                                                                        ctx.fill();
-                                                                                                                                                                                                    }
-                                                                                                                                                                                                }
-                                                                                            }
-                                                                                        }
+                                                                                                                                                                                                                                                                                                }
+                                                                                                                                                                                                                                                                                                                                                                                            }
+                                                                                                                                                                                                                                                                                                                                                                                        }
                                                                 }
 
                                 function loop() {
@@ -946,9 +960,36 @@
                     nodes[Math.floor(NODE_COUNT / 2)].velocity += (Math.random() - 0.5) * 14;
                 });
 
-        loop();
+        // Random rogue waves: a big swell rolls in every 5-6 seconds, with an occasional follow-up surge
+                function triggerBigWave() {
+                    const fromLeft = Math.random() < 0.5;
+                    const power = 22 + Math.random() * 20;
+                    const dir = fromLeft ? 1 : -1;
+                    const start = fromLeft ? 0 : NODE_COUNT - 1;
+                    for (let s = 0; s < 6; s++) {
+                        const idx = start + dir * s;
+                        if (idx >= 0 && idx < NODE_COUNT) {
+                            nodes[idx].velocity += dir * -1 * power * (1 - s * 0.14);
+                        }
+                    }
+                    nodes[Math.floor(NODE_COUNT / 2)].velocity += (Math.random() - 0.5) * power * 0.6;
+                    // Sometimes a second (or third) wave follows close behind
+                    if (Math.random() < 0.4) {
+                        setTimeout(triggerBigWave, 700 + Math.random() * 900);
+                    }
+                }
 
-        // Watchdog: if the page never receives a single orientation or motion event,
+                function scheduleBigWave() {
+                    setTimeout(() => {
+                        triggerBigWave();
+                        scheduleBigWave();
+                    }, 5000 + Math.random() * 1000);
+                }
+                scheduleBigWave();
+
+                loop();
+
+                // Watchdog: if the page never receives a single orientation or motion event,
         // say so plainly instead of leaving a blank/frozen debug panel
         setInterval(() => {
             if (orientationEventCount === 0 && motionEventCount === 0) {
