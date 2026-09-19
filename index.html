@@ -253,11 +253,20 @@
             });
         }
 
-        const SPRING_K = 0.035;       // Water surface tension
-        const DAMPING = 0.04;         // Wave decay speed
-        const SPREAD = 0.22;          // Wave transmission across nodes
-        const FOAM_VELOCITY_THRESHOLD = 2.2; // Velocity above which whitecaps form
-        const FOAM_DECAY = 0.92;      // How fast foam fades per frame
+        const SPRING_K = 0.022;       // Water surface tension (softer spring for a rolling motion)
+                const DAMPING = 0.075;        // Wave decay speed (higher damping stops jitter)
+                const SPREAD = 0.16;          // Wave transmission across nodes
+                const FOAM_VELOCITY_THRESHOLD = 3.4; // Velocity above which whitecaps form
+                const FOAM_DECAY = 0.95;      // How fast foam fades per frame
+                const MAX_NODE_VELOCITY = 5.5; // Cap so no node ever jumps violently in a single frame
+
+                // Smooth swell: applies a wide bell-shaped push around a node so waves roll instead of spike
+                function addSwell(centerIdx, strength, width) {
+                    for (let i = 0; i < NODE_COUNT; i++) {
+                        const d = (i - centerIdx) / width;
+                        nodes[i].velocity += strength * Math.exp(-d * d);
+                    }
+                }
 
         // State & Interpolation Targets
         let targetTilt = 0;           // Gravity roll target (radians)
@@ -354,21 +363,21 @@
                     const avgJerk = shakeBuffer.reduce((a, b) => a + b, 0) / SHAKE_BUFFER_SIZE;
 
                     if (avgJerk > 2.4) {
-                        const splashForce = Math.min(avgJerk * 2.0, 55);
-                        if (dx > 0) {
-                            nodes[0].velocity += splashForce * 0.8;
-                            nodes[nodes.length - 1].velocity -= splashForce * 0.8;
-                        } else {
-                            nodes[0].velocity -= splashForce * 0.8;
-                            nodes[nodes.length - 1].velocity += splashForce * 0.8;
-                        }
-                        nodes[Math.floor(NODE_COUNT / 2)].velocity += (Math.random() - 0.5) * splashForce;
-                        if (Math.abs(dz) > 1.5) {
-                            for (let i = 0; i < NODE_COUNT; i++) {
-                                nodes[i].velocity += (dz > 0 ? 1 : -1) * Math.min(Math.abs(dz) * 0.6, 8);
-                            }
-                        }
-                    }
+                                            const splashForce = Math.min(avgJerk * 0.12, 3.2);
+                                            if (dx > 0) {
+                                                addSwell(0, splashForce, 5);
+                                                addSwell(NODE_COUNT - 1, -splashForce, 5);
+                                            } else {
+                                                addSwell(0, -splashForce, 5);
+                                                addSwell(NODE_COUNT - 1, splashForce, 5);
+                                            }
+                                            addSwell(Math.floor(NODE_COUNT / 2), (Math.random() - 0.5) * splashForce, 6);
+                                            if (Math.abs(dz) > 1.5) {
+                                                for (let i = 0; i < NODE_COUNT; i++) {
+                                                    nodes[i].velocity += (dz > 0 ? 1 : -1) * Math.min(Math.abs(dz) * 0.06, 0.8);
+                                                }
+                                            }
+                                        }
                 }
 
                 // --- Animation & Physics Loop ---
@@ -397,10 +406,12 @@
                                         const diff = nodes[i].y - nodes[i].targetY;
                                         const force = -SPRING_K * diff - DAMPING * nodes[i].velocity;
                                         nodes[i].velocity += force;
-                                        nodes[i].y += nodes[i].velocity;
+                                                                                if (nodes[i].velocity > MAX_NODE_VELOCITY) nodes[i].velocity = MAX_NODE_VELOCITY;
+                                                                                if (nodes[i].velocity < -MAX_NODE_VELOCITY) nodes[i].velocity = -MAX_NODE_VELOCITY;
+                                                                                nodes[i].y += nodes[i].velocity;
 
                                         if (Math.abs(nodes[i].velocity) > FOAM_VELOCITY_THRESHOLD) {
-                                            nodes[i].foam = Math.min(1, nodes[i].foam + (Math.abs(nodes[i].velocity) - FOAM_VELOCITY_THRESHOLD) * 0.15);
+                                            nodes[i].foam = Math.min(1, nodes[i].foam + (Math.abs(nodes[i].velocity) - FOAM_VELOCITY_THRESHOLD) * 0.06);
                                         } else {
                                             nodes[i].foam *= FOAM_DECAY;
                                         }
@@ -423,7 +434,7 @@
                                     // Surface smoothing: blend each node toward its neighbours so the water edge stays a clean curve
                                                                         for (let i = 1; i < NODE_COUNT - 1; i++) {
                                                                             const smoothed = (nodes[i - 1].y + nodes[i + 1].y) * 0.5;
-                                                                            nodes[i].y += (smoothed - nodes[i].y) * 0.18;
+                                                                            nodes[i].y += (smoothed - nodes[i].y) * 0.32;
                                                                         }
 
                                                                         // Ship horizontal motion (drifting with tilt and time)
@@ -938,30 +949,36 @@
         });
 
         // Desktop Click to trigger splash (surge from both edges plus a center impact for a natural wave collision)
-                window.addEventListener('click', () => {
-                    nodes[0].velocity += 20;
-                    nodes[nodes.length - 1].velocity -= 20;
-                    nodes[Math.floor(NODE_COUNT / 2)].velocity += (Math.random() - 0.5) * 14;
-                });
+                window.addEventListener('click', (e) => {
+                                    // Smooth swell centered where the screen was touched, rolling outward
+                                    const tapNode = Math.max(0, Math.min(NODE_COUNT - 1, Math.round((e.clientX / window.innerWidth) * (NODE_COUNT - 1))));
+                                    addSwell(tapNode, 2.6, 5);
+                                    addSwell(0, 1.6, 4);
+                                    addSwell(NODE_COUNT - 1, -1.6, 4);
+                                });
 
         // Random rogue waves: a big swell rolls in every 5-6 seconds, with an occasional follow-up surge
                 function triggerBigWave() {
-                    const fromLeft = Math.random() < 0.5;
-                    const power = 22 + Math.random() * 20;
-                    const dir = fromLeft ? 1 : -1;
-                    const start = fromLeft ? 0 : NODE_COUNT - 1;
-                    for (let s = 0; s < 6; s++) {
-                        const idx = start + dir * s;
-                        if (idx >= 0 && idx < NODE_COUNT) {
-                            nodes[idx].velocity += dir * -1 * power * (1 - s * 0.14);
-                        }
-                    }
-                    nodes[Math.floor(NODE_COUNT / 2)].velocity += (Math.random() - 0.5) * power * 0.6;
-                    // Sometimes a second (or third) wave follows close behind
-                    if (Math.random() < 0.4) {
-                        setTimeout(triggerBigWave, 700 + Math.random() * 900);
-                    }
-                }
+                                    const fromLeft = Math.random() < 0.5;
+                                    const power = 2.4 + Math.random() * 1.8;
+                                    const dir = fromLeft ? 1 : -1;
+                                    const start = fromLeft ? 0 : NODE_COUNT - 1;
+                                    // Long, gentle swell that rolls in instead of a sudden spike
+                                    let s = 0;
+                                    const rollTimer = setInterval(() => {
+                                        const idx = start + dir * s * 2;
+                                        if (idx < 0 || idx >= NODE_COUNT || s > 12) {
+                                            clearInterval(rollTimer);
+                                            return;
+                                        }
+                                        addSwell(idx, -dir * power * (1 - s * 0.05), 4);
+                                        s++;
+                                    }, 90);
+                                    // Sometimes a second (or third) wave follows close behind
+                                    if (Math.random() < 0.4) {
+                                        setTimeout(triggerBigWave, 1400 + Math.random() * 1400);
+                                    }
+                                }
 
                 function scheduleBigWave() {
                     setTimeout(() => {
